@@ -128,18 +128,22 @@ func (g Goal) Percent() float64 {
 	return p
 }
 
-// Amount formats a value with the goal's unit. Symbols go in front, as in
-// "£35,000"; units that start with a letter go after with a space, as in
-// "6 kg" or "12 sessions".
+// Amount formats a value with the goal's unit. Currency symbols go in
+// front, as in "£35,000". Units that start with a letter go after with a
+// space, as in "6 kg". Other symbols go straight after, as in "50%" or "20°C".
 func (g Goal) Amount(v float64) string {
 	n := FormatNumber(v)
 	if g.Unit == "" {
 		return n
 	}
-	if r := []rune(g.Unit)[0]; unicode.IsLetter(r) {
+	r := []rune(g.Unit)[0]
+	switch {
+	case unicode.Is(unicode.Sc, r):
+		return g.Unit + n
+	case unicode.IsLetter(r):
 		return n + " " + g.Unit
 	}
-	return g.Unit + n
+	return n + g.Unit
 }
 
 // FormatNumber renders a float with thousands separators and no trailing

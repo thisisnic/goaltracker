@@ -57,6 +57,9 @@ func TestAmount(t *testing.T) {
 		{"$", 12.5, "$12.5"},
 		{"kg", 6, "6 kg"},
 		{"sessions", 12, "12 sessions"},
+		{"%", 50, "50%"},
+		{"°C", 20, "20°C"},
+		{"€", 99, "€99"},
 		{"", 7, "7"},
 	}
 	for _, c := range cases {
