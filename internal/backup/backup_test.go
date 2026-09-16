@@ -306,17 +306,93 @@ func TestRestoreUndoOnFailure(t *testing.T) {
 	if exists(e.dbPath) {
 		t.Error("database moved back without its WAL")
 	}
+
+	// reset puts the database and WAL back at dbPath from wherever the
+	// previous scenario left them.
+	reset := func() {
+		t.Helper()
+		rename = os.Rename
+		for _, s := range []string{"", "-wal"} {
+			if exists(kept + s) {
+				if err := os.Rename(kept+s, e.dbPath+s); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if !exists(e.dbPath) || !exists(e.dbPath+"-wal") {
+			t.Fatalf("reset failed: db=%v wal=%v", exists(e.dbPath), exists(e.dbPath+"-wal"))
+		}
+	}
+
+	// If the WAL went back but the database itself cannot, the WAL is
+	// returned to sit beside the database at kept.
+	reset()
+	rename = func(from, to string) error {
+		if from == tmp || from == e.dbPath+".bak" {
+			return errors.New("main file stuck")
+		}
+		return os.Rename(from, to)
+	}
+	kept, err = Restore(res.Path, e.keyFile, e.dbPath, now)
+	if err == nil || !strings.Contains(err.Error(), "Your data is at "+kept) {
+		t.Fatalf("err = %v", err)
+	}
+	if !exists(kept) || !exists(kept+"-wal") || exists(e.dbPath+"-wal") || exists(e.dbPath) {
+		t.Errorf("data split after failed undo: kept=%v kept-wal=%v db=%v db-wal=%v",
+			exists(kept), exists(kept+"-wal"), exists(e.dbPath), exists(e.dbPath+"-wal"))
+	}
+
+	// If regrouping fails too, every location is named.
+	reset()
+	swapTried := false
+	rename = func(from, to string) error {
+		if from == tmp {
+			swapTried = true
+			return errors.New("everything stuck")
+		}
+		// Only fail once the undo has started, so the forward moves work.
+		if swapTried && (from == e.dbPath+".bak" || to == e.dbPath+".bak-wal") {
+			return errors.New("everything stuck")
+		}
+		return os.Rename(from, to)
+	}
+	kept, err = Restore(res.Path, e.keyFile, e.dbPath, now)
+	if err == nil || !strings.Contains(err.Error(), kept) || !strings.Contains(err.Error(), e.dbPath+"-wal") {
+		t.Fatalf("err = %v, want both locations named", err)
+	}
+
+	// A failure moving the WAL forward, before the swap, still reports the
+	// WAL's real location when the database cannot go back.
+	reset()
+	rename = func(from, to string) error {
+		if to == e.dbPath+".bak-wal" || from == e.dbPath+".bak" {
+			return errors.New("wal stuck")
+		}
+		return os.Rename(from, to)
+	}
+	kept, err = Restore(res.Path, e.keyFile, e.dbPath, now)
+	if err == nil || !strings.Contains(err.Error(), kept) || !strings.Contains(err.Error(), e.dbPath+"-wal") {
+		t.Fatalf("err = %v, want both locations named", err)
+	}
 }
 
 func TestStaleTempsOnlyWhenOld(t *testing.T) {
 	e := newEnv(t)
-	os.MkdirAll(e.opts.Dir, 0o700)
+	if err := os.MkdirAll(e.opts.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	fresh := filepath.Join(e.opts.Dir, ".lifeo-backup-fresh.tmp")
 	old := filepath.Join(e.opts.Dir, ".lifeo-backup-old.tmp")
-	os.WriteFile(fresh, []byte("in use"), 0o600)
-	os.WriteFile(old, []byte("abandoned"), 0o600)
+	if err := os.WriteFile(fresh, []byte("in use"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(old, []byte("abandoned"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	past := time.Now().Add(-staleAfter - time.Minute)
-	os.Chtimes(old, past, past)
+	if err := os.Chtimes(old, past, past); err != nil {
+		t.Fatal(err)
+	}
 	e.run(t)
 	if !exists(fresh) {
 		t.Error("a recent temp file, possibly another run's, was deleted")
@@ -335,6 +411,24 @@ func TestMarkerPathDiffersPerDatabaseAndFolder(t *testing.T) {
 	}
 	if filepath.Dir(a) != "/state" || !strings.HasPrefix(filepath.Base(a), "last-backup-") {
 		t.Errorf("marker path = %s", a)
+	}
+
+	// Different spellings of the same paths share a marker.
+	root := t.TempDir()
+	db := filepath.Join(root, "lifeo.db")
+	if err := os.WriteFile(db, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link.db")
+	if err := os.Symlink(db, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	same := []string{db, "lifeo.db", "./lifeo.db", link, filepath.Join(root, "sub", "..", "lifeo.db")}
+	for _, alt := range same[1:] {
+		if MarkerPath("/state", alt, root) != MarkerPath("/state", same[0], root) {
+			t.Errorf("%q gets a different marker from %q", alt, same[0])
+		}
 	}
 }
 

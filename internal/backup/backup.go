@@ -154,8 +154,20 @@ func removeStaleTemps(dir string) {
 // folder goes inside stateDir, so different databases or folders sharing a
 // config directory do not overwrite each other's marker.
 func MarkerPath(stateDir, dbPath, dir string) string {
-	h := hashOf([]byte(dbPath + "\x00" + dir))
+	h := hashOf([]byte(canonical(dbPath) + "\x00" + canonical(dir)))
 	return filepath.Join(stateDir, "last-backup-"+h[:12])
+}
+
+// canonical makes a path absolute and follows symlinks where it can, so the
+// same file reached by different spellings shares one marker.
+func canonical(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if real, err := filepath.EvalSymlinks(p); err == nil {
+		p = real
+	}
+	return filepath.Clean(p)
 }
 
 // writeEncrypted encrypts plain to a temporary file beside path and renames
@@ -298,19 +310,41 @@ func Restore(backupFile, identityFile, dbPath string, now time.Time) (kept strin
 }
 
 // undo moves a kept database and its WAL files back to dbPath after a
-// failed restore. The WAL files go first, so if anything fails the database
-// is still at kept, next to whatever WAL files are left, and the error can
-// say so truthfully.
+// failed restore. The WAL files go first. If the database itself cannot go
+// back, the WAL files are gathered beside it at kept so the data stays
+// together, and the error names every file that is really there.
 func undo(dbPath, kept string, cause error) (string, error) {
-	for _, s := range append(append([]string{}, sidecars...), "") {
+	for _, s := range sidecars {
 		if !exists(kept + s) {
 			continue
 		}
 		if err := rename(kept+s, dbPath+s); err != nil {
-			return kept, fmt.Errorf("%w; and could not put the database back: %v. Your data is at %s", cause, err, kept)
+			return kept, regroup(dbPath, kept, fmt.Errorf("%w; and could not put the database back: %v", cause, err))
 		}
 	}
+	if err := rename(kept, dbPath); err != nil {
+		return kept, regroup(dbPath, kept, fmt.Errorf("%w; and could not put the database back: %v", cause, err))
+	}
 	return "", cause
+}
+
+// regroup gathers any WAL files still at dbPath beside the database at
+// kept, then lists where every remaining file is.
+func regroup(dbPath, kept string, cause error) error {
+	for _, s := range sidecars {
+		if exists(dbPath + s) {
+			rename(dbPath+s, kept+s)
+		}
+	}
+	var locations []string
+	for _, s := range append([]string{""}, sidecars...) {
+		for _, base := range []string{kept, dbPath} {
+			if exists(base + s) {
+				locations = append(locations, base+s)
+			}
+		}
+	}
+	return fmt.Errorf("%w. Your data is at %s", cause, strings.Join(locations, " and "))
 }
 
 func exists(path string) bool {
