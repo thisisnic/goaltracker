@@ -56,7 +56,12 @@ func TestPushGivesUpOnHungRemote(t *testing.T) {
 	if err != nil || pid <= 1 {
 		t.Fatalf("bad fake ssh pid %q: %v", raw, err)
 	}
-	t.Cleanup(func() { syscall.Kill(pid, syscall.SIGKILL) })
+	dead := false
+	t.Cleanup(func() {
+		if !dead {
+			syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
 	// Gone means reaped, or a zombie waiting for an init that does not
 	// reap promptly; either way it is no longer running.
 	gone := func() bool {
@@ -83,6 +88,7 @@ func TestPushGivesUpOnHungRemote(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	dead = true // the pid may be reused from here; never kill it again
 }
 
 func TestPushExpiringDuringCommitIsCancellation(t *testing.T) {
@@ -173,11 +179,17 @@ func TestCancelKillsChildThatIgnoresTerm(t *testing.T) {
 	if err != nil || pid <= 1 {
 		t.Fatalf("bad child pid %q: %v", raw, err)
 	}
-	t.Cleanup(func() { syscall.Kill(pid, syscall.SIGKILL) })
+	dead := false
+	t.Cleanup(func() {
+		if !dead {
+			syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
 	// The child must die from the immediate kill, well inside killGrace.
 	deadline := time.Now().Add(time.Second)
 	for {
 		if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
+			dead = true // the pid may be reused from here; never kill it again
 			break
 		}
 		if time.Now().After(deadline) {
