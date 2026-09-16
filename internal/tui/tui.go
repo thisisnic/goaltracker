@@ -318,7 +318,7 @@ func (m *model) View() tea.View {
 	// paneStyle's Width and Height include its border and padding, so the
 	// content area is 4 narrower (border 2 + padding 2) and 2 shorter.
 	left := paneStyle.Width(listW).Height(bodyH).Render(m.viewList(listW-4, bodyH-2))
-	right := paneStyle.Width(detailW).Height(bodyH).Render(m.viewDetail(detailW - 4))
+	right := paneStyle.Width(detailW).Height(bodyH).Render(clipLines(m.viewDetail(detailW-4), bodyH-2))
 
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("lifeo · goals"))
@@ -340,6 +340,19 @@ func (m *model) View() tea.View {
 	v := tea.NewView(b.String())
 	v.AltScreen = true
 	return v
+}
+
+// clipLines keeps the first h lines of s, ending with a marker when
+// anything was cut, so the pane never grows past its height.
+func clipLines(s string, h int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) <= h {
+		return s
+	}
+	if h < 1 {
+		return ""
+	}
+	return strings.Join(lines[:h-1], "\n") + "\n" + dimStyle.Render("…")
 }
 
 func (m *model) viewList(w, h int) string {

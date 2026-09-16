@@ -410,6 +410,28 @@ func TestEscClearsFilterBeforeClosingForm(t *testing.T) {
 	}
 }
 
+func TestLongWhyDoesNotPushHelpOffScreen(t *testing.T) {
+	m, store := setup(t)
+	why := strings.Repeat("this is a very long reason that goes on and on. ", 40)
+	if _, err := store.Update(context.Background(), 1, goal.Edit{Why: &why}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	deliver(m, tea.WindowSizeMsg{Width: 100, Height: 24})
+	view := m.View().Content
+	if h := lipgloss.Height(view); h > 24 {
+		t.Errorf("view is %d lines tall for a 24-line terminal", h)
+	}
+	if !strings.Contains(view, "q quit") {
+		t.Error("help line not visible")
+	}
+	if !strings.Contains(view, "…") {
+		t.Error("no marker that the detail pane was clipped")
+	}
+}
+
 func TestFormResizes(t *testing.T) {
 	m, _ := setup(t)
 	press(m, "a")
