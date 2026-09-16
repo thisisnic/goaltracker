@@ -47,6 +47,25 @@ func TestFormatNumber(t *testing.T) {
 	}
 }
 
+func TestAmount(t *testing.T) {
+	cases := []struct {
+		unit string
+		v    float64
+		want string
+	}{
+		{"£", 35000, "£35,000"},
+		{"$", 12.5, "$12.5"},
+		{"kg", 6, "6 kg"},
+		{"sessions", 12, "12 sessions"},
+		{"", 7, "7"},
+	}
+	for _, c := range cases {
+		if got := (Goal{Unit: c.unit}).Amount(c.v); got != c.want {
+			t.Errorf("Amount(%q, %v) = %q want %q", c.unit, c.v, got, c.want)
+		}
+	}
+}
+
 func TestPercent(t *testing.T) {
 	g := Goal{Kind: Numeric, Target: 70000, Current: 35000}
 	if p := g.Percent(); p != 50 {

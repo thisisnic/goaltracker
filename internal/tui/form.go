@@ -78,7 +78,7 @@ func newGoalForm(existing *goal.Goal, candidates []goal.Row, defaultPeriod strin
 					_, err := parseTarget(s)
 					return err
 				}),
-			huh.NewInput().Title("Unit").Description("e.g. £").Value(&f.unit),
+			huh.NewInput().Title("Unit").Description("e.g. £ or kg").Value(&f.unit),
 			huh.NewSelect[int64]().Title("Under").Options(opts...).Value(&f.parent).Height(8),
 		).Title(title),
 	).WithShowHelp(true)

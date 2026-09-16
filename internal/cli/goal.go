@@ -82,7 +82,7 @@ otherwise it is a yes/no goal.`,
 	cmd.Flags().StringVar(&in.Why, "why", "", "why this goal matters")
 	cmd.Flags().Int64Var(&parent, "parent", 0, "id of the goal this one sits under")
 	cmd.Flags().Float64Var(&in.Target, "target", 0, "numeric target; omit for a yes/no goal")
-	cmd.Flags().StringVar(&in.Unit, "unit", "", "unit prefix for the target, e.g. £")
+	cmd.Flags().StringVar(&in.Unit, "unit", "", "unit for the target, e.g. £ or kg")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the goal as JSON")
 	_ = cmd.MarkFlagRequired("period")
 	return cmd
@@ -269,7 +269,7 @@ func goalEditCmd(dbPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&statement, "statement", "", "new statement")
 	cmd.Flags().StringVar(&why, "why", "", "new why")
 	cmd.Flags().Float64Var(&target, "target", 0, "new target; 0 makes the goal yes/no")
-	cmd.Flags().StringVar(&unit, "unit", "", "new unit prefix")
+	cmd.Flags().StringVar(&unit, "unit", "", "new unit, e.g. £ or kg")
 	cmd.Flags().Int64Var(&parent, "parent", 0, "new parent goal id")
 	cmd.Flags().BoolVar(&clearParent, "no-parent", false, "remove the parent link")
 	return cmd

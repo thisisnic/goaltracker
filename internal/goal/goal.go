@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Level is the horizon a goal is set for.
@@ -127,9 +128,18 @@ func (g Goal) Percent() float64 {
 	return p
 }
 
-// Amount formats a value with the goal's unit, e.g. "£35,000".
+// Amount formats a value with the goal's unit. Symbols go in front, as in
+// "£35,000"; units that start with a letter go after with a space, as in
+// "6 kg" or "12 sessions".
 func (g Goal) Amount(v float64) string {
-	return g.Unit + FormatNumber(v)
+	n := FormatNumber(v)
+	if g.Unit == "" {
+		return n
+	}
+	if r := []rune(g.Unit)[0]; unicode.IsLetter(r) {
+		return n + " " + g.Unit
+	}
+	return g.Unit + n
 }
 
 // FormatNumber renders a float with thousands separators and no trailing
