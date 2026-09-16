@@ -62,6 +62,7 @@ dir = "~/lifeo-data"          # your private data repo
 recipient = "age1..."         # public key, encrypts
 identity_file = "~/.config/lifeo/key.txt"  # private key, decrypts
 on_quit = true                # back up every time the UI exits
+git = true                    # then git commit and push from dir
 ```
 
 Keep a copy of the private key in a password manager. Without it the
@@ -72,7 +73,10 @@ lifeo backup                  # back up now (skipped if unchanged)
 lifeo restore                 # put the backup in place of the database
 ```
 
-Commit and push the data repo however you like. The file is small.
+With `git = true` lifeo commits and pushes the file for you after each
+backup, so the data repo needs an upstream and credentials that work without
+a prompt, such as an SSH key. A failed push is reported and retried next
+time. Without it, commit and push the data repo however you like.
 
 ## Development
 

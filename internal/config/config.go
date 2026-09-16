@@ -30,6 +30,8 @@ type Backup struct {
 	IdentityFile string `toml:"identity_file"`
 	// OnQuit makes the TUI write a snapshot when it exits.
 	OnQuit bool `toml:"on_quit"`
+	// Git commits and pushes the backup file from Dir after each backup.
+	Git bool `toml:"git"`
 }
 
 // Configured reports whether backups have somewhere to go and a key.
@@ -93,5 +95,8 @@ recipient = %q
 identity_file = %q
 # Write a snapshot every time the TUI exits.
 on_quit = true
+# After each backup, git commit and push from dir. Needs the folder to be a
+# clone with an upstream and credentials that work without a prompt.
+git = true
 `, recipient, identityFile)
 }

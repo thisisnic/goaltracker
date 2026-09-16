@@ -1,0 +1,161 @@
+package backup
+
+import (
+	"context"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/thisisnic/lifeo/internal/goal"
+)
+
+// gitRepos makes a bare "remote" and a clone of it at dir, with an
+// upstream set, so Push has somewhere to go.
+func gitRepos(t *testing.T, dir string) (remote string) {
+	t.Helper()
+	remote = filepath.Join(t.TempDir(), "remote.git")
+	run := func(cwd string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = cwd
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+			"HOME="+t.TempDir(), // ignore the developer's git config
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	run(t.TempDir(), "init", "-q", "--bare", "-b", "main", remote)
+	run(filepath.Dir(dir), "clone", "-q", remote, dir)
+	run(dir, "commit", "-q", "--allow-empty", "-m", "init")
+	run(dir, "push", "-q", "-u", "origin", "main")
+	return remote
+}
+
+func remoteLog(t *testing.T, remote string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", remote, "log", "--format=%s", "main").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+func TestPushCommitsAndPushes(t *testing.T) {
+	e := newEnv(t)
+	remote := gitRepos(t, e.opts.Dir)
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
+	ctx := context.Background()
+
+	e.run(t)
+	if err := Push(ctx, e.opts.Dir, now); err != nil {
+		t.Fatal(err)
+	}
+	if log := remoteLog(t, remote); !strings.Contains(log, "lifeo backup 2026-09-16 12:00 UTC") {
+		t.Errorf("remote log:\n%s", log)
+	}
+
+	// Nothing changed: no new commit, no error.
+	if err := Push(ctx, e.opts.Dir, now); err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(remoteLog(t, remote), "lifeo backup"); n != 1 {
+		t.Errorf("unchanged backup produced %d commits", n)
+	}
+
+	// A change is committed and pushed.
+	if _, err := e.store.Add(ctx, goal.NewGoal{Statement: "x", Period: "2026"}); err != nil {
+		t.Fatal(err)
+	}
+	e.run(t)
+	if err := Push(ctx, e.opts.Dir, now); err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(remoteLog(t, remote), "lifeo backup"); n != 2 {
+		t.Errorf("changed backup: %d commits on remote", n)
+	}
+}
+
+func TestPushFailureIsRetried(t *testing.T) {
+	e := newEnv(t)
+	remote := gitRepos(t, e.opts.Dir)
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
+	ctx := context.Background()
+	e.run(t)
+
+	// Break the remote so the push fails after the commit.
+	if err := os.Rename(remote, remote+".gone"); err != nil {
+		t.Fatal(err)
+	}
+	err := Push(ctx, e.opts.Dir, now)
+	if !errors.Is(err, ErrPushFailed) {
+		t.Fatalf("err = %v, want ErrPushFailed", err)
+	}
+	// The commit exists locally.
+	out, _ := exec.Command("git", "-C", e.opts.Dir, "log", "--format=%s", "-1").Output()
+	if !strings.Contains(string(out), "lifeo backup") {
+		t.Errorf("commit not made locally: %s", out)
+	}
+
+	// Remote back: the next Push, with nothing new, carries the commit.
+	if err := os.Rename(remote+".gone", remote); err != nil {
+		t.Fatal(err)
+	}
+	if err := Push(ctx, e.opts.Dir, now); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(remoteLog(t, remote), "lifeo backup") {
+		t.Error("earlier commit was not pushed on retry")
+	}
+}
+
+func TestPushFromFreshCloneSetsUpstream(t *testing.T) {
+	e := newEnv(t)
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	for _, args := range [][]string{
+		{"init", "-q", "--bare", "-b", "main", remote},
+		{"clone", "-q", remote, e.opts.Dir},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Env = append(os.Environ(), "HOME="+t.TempDir())
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
+	ctx := context.Background()
+	e.run(t)
+	if err := Push(ctx, e.opts.Dir, now); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(remoteLog(t, remote), "lifeo backup") {
+		t.Error("first push from a fresh clone did not reach the remote")
+	}
+	// Second time round the upstream is set and nothing is pending.
+	if err := Push(ctx, e.opts.Dir, now); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPushNeedsRepo(t *testing.T) {
+	e := newEnv(t)
+	e.run(t)
+	if err := Push(context.Background(), e.opts.Dir, now); err == nil || !strings.Contains(err.Error(), "not a git repository") {
+		t.Errorf("err = %v", err)
+	}
+}
