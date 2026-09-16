@@ -246,8 +246,15 @@ func TestRestoreKeepsWALWithBak(t *testing.T) {
 		t.Error("refused restore changed files on disk")
 	}
 	os.Remove(e.dbPath + "-wal")
+	// A lone shm file holds no data and is cleared rather than refused.
+	if err := os.WriteFile(e.dbPath+"-shm", []byte("shm"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := Restore(res.Path, e.keyFile, e.dbPath, now); err != nil {
-		t.Fatalf("restore after clearing the WAL: %v", err)
+		t.Fatalf("restore with only a stale shm: %v", err)
+	}
+	if exists(e.dbPath + "-shm") {
+		t.Error("stale shm left beside the restored database")
 	}
 }
 

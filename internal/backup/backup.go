@@ -161,7 +161,10 @@ func MarkerPath(stateDir, dbPath, dir string) string {
 // canonical makes a path absolute and follows symlinks, so the same file
 // reached by different spellings shares one marker. When the path does not
 // exist yet, the nearest existing parent is resolved and the rest appended,
-// so a marker made before the folder is created matches later ones.
+// so a marker made before the folder is created matches later ones. A
+// dangling symlink counts as not existing and is not followed; once its
+// target appears the marker changes, which costs one extra backup and
+// nothing else.
 func canonical(p string) string {
 	if abs, err := filepath.Abs(p); err == nil {
 		p = abs
@@ -282,12 +285,15 @@ func Restore(backupFile, identityFile, dbPath string, now time.Time) (kept strin
 		// No live database. A WAL file without one is abnormal: it may hold
 		// commits from a database that a failed restore left elsewhere, and
 		// SQLite would apply it to the restored file. Refuse rather than
-		// delete or pair it.
-		for _, s := range sidecars {
-			if exists(dbPath + s) {
-				os.Remove(tmp)
-				return "", fmt.Errorf("%s exists but %s does not; a previous restore may have failed. Put the database back beside it, or move the file away, before restoring", dbPath+s, dbPath)
-			}
+		// delete or pair it. A lone shm file is only a rebuildable index,
+		// so it is simply removed.
+		if exists(dbPath + "-wal") {
+			os.Remove(tmp)
+			return "", fmt.Errorf("%s-wal exists but %s does not; a previous restore may have failed. Put the database back beside it, or move the file away, before restoring", dbPath, dbPath)
+		}
+		if err := os.Remove(dbPath + "-shm"); err != nil && !os.IsNotExist(err) {
+			os.Remove(tmp)
+			return "", fmt.Errorf("remove stale %s-shm: %w", dbPath, err)
 		}
 	} else {
 		kept = dbPath + ".bak"
