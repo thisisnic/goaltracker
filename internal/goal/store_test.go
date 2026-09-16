@@ -309,12 +309,12 @@ func TestOpenLeavesUserDirectoryAlone(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() { s.Close() })
 		if m := modeOf(t, dir); m != 0o755 {
 			t.Errorf("%s: user directory mode changed to %o", name, m)
 		}
 		if m := modeOf(t, filepath.Join(dir, "goals.db")); m != 0o600 {
 			t.Errorf("%s: database mode = %o want 600", name, m)
 		}
-		s.Close()
 	}
 }

@@ -294,3 +294,28 @@ func TestDefaultPathOwnsItsDirectory(t *testing.T) {
 		t.Errorf("default data dir left at %o", info.Mode().Perm())
 	}
 }
+
+func TestEnvPathDoesNotOwnItsDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix file modes")
+	}
+	docs := filepath.Join(t.TempDir(), "Documents")
+	if err := os.Mkdir(docs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("GOALTRACKER_DB", filepath.Join(docs, "goals.db"))
+	root := New()
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"goal", "list"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(docs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Errorf("directory chosen via GOALTRACKER_DB changed to %o", info.Mode().Perm())
+	}
+}

@@ -23,6 +23,12 @@ func DefaultDBPath() string {
 	if p := os.Getenv("GOALTRACKER_DB"); p != "" {
 		return p
 	}
+	return dataDirDBPath()
+}
+
+// dataDirDBPath is the tool's own location for the database, ignoring
+// GOALTRACKER_DB. Only a database here lives in a directory the tool owns.
+func dataDirDBPath() string {
 	base := os.Getenv("XDG_DATA_HOME")
 	if base == "" {
 		home, err := os.UserHomeDir()
@@ -89,7 +95,7 @@ TUI writes one every time it exits.`,
 // openDB opens the database, vouching for its directory only when it is
 // the tool's own default location.
 func openDB(path string) (*goal.Store, error) {
-	if path == DefaultDBPath() {
+	if path == dataDirDBPath() {
 		return goal.Open(path, goal.OwnDir())
 	}
 	return goal.Open(path)
