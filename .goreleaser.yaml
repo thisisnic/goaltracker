@@ -1,0 +1,43 @@
+version: 2
+
+project_name: goaltracker
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: goaltracker
+    main: ./cmd/goaltracker
+    binary: goaltracker
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/thisisnic/goaltracker/internal/version.Version={{.Version}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^README"
+      - "^docs"
+
+release:
+  draft: false
+  prerelease: auto

@@ -257,3 +257,13 @@ func TestKeyBackupRestore(t *testing.T) {
 		t.Errorf("restore without file: %q", msg)
 	}
 }
+
+func TestVersion(t *testing.T) {
+	r := newRunner(t)
+	if out := r.run("", false, "version"); !strings.HasPrefix(out, "goaltracker ") || strings.TrimSpace(out) == "goaltracker" {
+		t.Errorf("version output: %q", out)
+	}
+	if out := r.run("", false, "--version"); !strings.HasPrefix(out, "goaltracker ") {
+		t.Errorf("--version output: %q", out)
+	}
+}

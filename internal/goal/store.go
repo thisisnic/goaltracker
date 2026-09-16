@@ -43,9 +43,26 @@ CREATE INDEX IF NOT EXISTS progress_goal ON progress(goal_id, recorded_at);
 `
 
 // Open opens or creates the database at path, creating parent directories.
+// The directory and file are owner-only: the database holds the why,
+// amounts and notes in plaintext, and SQLite reuses the file's mode for the
+// -wal and -shm files it keeps beside it.
 func Open(path string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
+	}
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("create database: %w", err)
+	}
+	f.Close()
+	// Files and directories made by earlier versions may be looser.
+	for p, mode := range map[string]os.FileMode{dir: 0o700, path: 0o600, path + "-wal": 0o600, path + "-shm": 0o600} {
+		if info, err := os.Stat(p); err == nil && info.Mode().Perm() != mode {
+			if err := os.Chmod(p, mode); err != nil {
+				return nil, fmt.Errorf("restrict %s: %w", p, err)
+			}
+		}
 	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {

@@ -273,7 +273,7 @@ func Restore(backupFile, identityFile, dbPath string, now time.Time) (kept strin
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		return "", err
 	}
 	tmp := dbPath + ".restore-tmp"

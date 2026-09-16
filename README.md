@@ -11,11 +11,16 @@ optional. More parts, such as tasks and time planning, are on the way.
 
 ## Install
 
+Download a binary for your platform from
+[GitHub Releases](https://github.com/thisisnic/goaltracker/releases) and put
+it on your `PATH`, or with Go installed:
+
 ```sh
 go install github.com/thisisnic/goaltracker/cmd/goaltracker@latest
 ```
 
 Or from a checkout: `make build` puts `./goaltracker` in the repo.
+`goaltracker version` shows what you have.
 
 ## Use
 

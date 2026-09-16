@@ -13,6 +13,7 @@ import (
 	"github.com/thisisnic/goaltracker/internal/config"
 	"github.com/thisisnic/goaltracker/internal/goal"
 	"github.com/thisisnic/goaltracker/internal/tui"
+	"github.com/thisisnic/goaltracker/internal/version"
 )
 
 // DefaultDBPath is where the database lives unless overridden by --db or
@@ -53,6 +54,7 @@ Press x in the UI to toggle it.
 Backups are encrypted snapshots written to a folder you choose. Run
 goaltracker key new once to set that up; with on_quit set in the config the
 TUI writes one every time it exits.`,
+		Version:       version.String(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -79,7 +81,8 @@ TUI writes one every time it exits.`,
 	root.PersistentFlags().StringVar(&dbPath, "db", DefaultDBPath(), "path to the SQLite database (env GOALTRACKER_DB)")
 	root.PersistentFlags().StringVar(&cfgPath, "config", config.Path(), "path to the config file")
 	root.Flags().BoolVar(&private, "private", envFailClosed("GOALTRACKER_PRIVATE"), "start with the why, amounts and notes hidden; x toggles (env GOALTRACKER_PRIVATE=1)")
-	root.AddCommand(goalCmd(&dbPath), keyCmd(), backupCmd(&dbPath, &cfgPath), restoreCmd(&dbPath, &cfgPath))
+	root.SetVersionTemplate("goaltracker {{.Version}}\n")
+	root.AddCommand(goalCmd(&dbPath), keyCmd(), backupCmd(&dbPath, &cfgPath), restoreCmd(&dbPath, &cfgPath), versionCmd())
 	return root
 }
 
@@ -111,4 +114,15 @@ func envFailClosed(name string) bool {
 
 func openStore(path *string) (*goal.Store, error) {
 	return goal.Open(*path)
+}
+
+func versionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the version",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Fprintf(cmd.OutOrStdout(), "goaltracker %s\n", version.String())
+		},
+	}
 }

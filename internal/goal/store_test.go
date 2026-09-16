@@ -3,6 +3,7 @@ package goal
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -218,5 +219,51 @@ func TestListRejectsBadYear(t *testing.T) {
 		if _, err := s.List(ctx, Filter{Year: y}); err == nil {
 			t.Errorf("List year %q succeeded, want error", y)
 		}
+	}
+}
+
+func TestOpenIsOwnerOnly(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	path := filepath.Join(dir, "goaltracker.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Force the WAL and shm files into existence.
+	if _, err := s.Add(context.Background(), NewGoal{Statement: "x", Period: "2026"}); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if info, _ := os.Stat(dir); info.Mode().Perm() != 0o700 {
+		t.Errorf("data dir mode = %o want 700", info.Mode().Perm())
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		info, err := os.Stat(path + suffix)
+		if err != nil {
+			t.Errorf("%s: %v", suffix, err)
+			continue
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Errorf("%s mode = %o want 600", path+suffix, info.Mode().Perm())
+		}
+	}
+	// A database left loose by an earlier version is tightened on open.
+	s.Close()
+	os.Chmod(path, 0o644)
+	os.Chmod(dir, 0o755)
+	// Reopening an existing database must not fail or lose data.
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	if got, _ := s2.List(context.Background(), Filter{}); len(got) != 1 {
+		t.Errorf("reopened database lost data: %d goals", len(got))
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Errorf("loose database not tightened: %o", info.Mode().Perm())
+	}
+	if info, _ := os.Stat(dir); info.Mode().Perm() != 0o700 {
+		t.Errorf("loose data dir not tightened: %o", info.Mode().Perm())
 	}
 }
