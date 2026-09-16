@@ -78,6 +78,24 @@ backup, so the data repo needs an upstream and credentials that work without
 a prompt, such as an SSH key. A failed push is reported and retried next
 time. Without it, commit and push the data repo however you like.
 
+## Upgrading from lifeo
+
+The command used to be called `lifeo`. Nothing moves your data across on
+its own, so if you had it installed, do this once with no goaltracker
+running:
+
+```sh
+mv ~/.config/lifeo ~/.config/goaltracker
+rm -f ~/.config/goaltracker/last-backup-*
+sed -i 's|/.config/lifeo/|/.config/goaltracker/|' ~/.config/goaltracker/config.toml
+mkdir -p ~/.local/share/goaltracker
+mv ~/.local/share/lifeo/lifeo.db ~/.local/share/goaltracker/goaltracker.db
+cd <your backup folder> && git mv lifeo.db.age goaltracker.db.age && git commit -m "rename" && git push
+```
+
+`LIFEO_DB` and `LIFEO_PRIVATE` are now `GOALTRACKER_DB` and
+`GOALTRACKER_PRIVATE`.
+
 ## Development
 
 ```sh
