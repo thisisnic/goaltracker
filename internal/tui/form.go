@@ -28,7 +28,7 @@ type goalForm struct {
 // newGoalForm builds the form. For an edit, existing is the goal being
 // changed and its fields are prefilled. candidates are the goals offered as
 // parents; the goal being edited and its descendants are excluded.
-func newGoalForm(existing *goal.Goal, candidates []goal.Row, defaultPeriod string) *goalForm {
+func newGoalForm(existing *goal.Goal, candidates []goal.Row, defaultPeriod string, width, height int) *goalForm {
 	f := &goalForm{period: defaultPeriod}
 	if existing != nil {
 		f.editID = existing.ID
@@ -37,7 +37,9 @@ func newGoalForm(existing *goal.Goal, candidates []goal.Row, defaultPeriod strin
 		f.why = existing.Why
 		f.unit = existing.Unit
 		if existing.Target > 0 {
-			f.target = goal.FormatNumber(existing.Target)
+			// Exact, not the display-rounded form, so saving an untouched
+			// edit does not change the stored target.
+			f.target = strconv.FormatFloat(existing.Target, 'f', -1, 64)
 		}
 		if existing.ParentID != nil {
 			f.parent = *existing.ParentID
@@ -77,10 +79,25 @@ func newGoalForm(existing *goal.Goal, candidates []goal.Row, defaultPeriod strin
 					return err
 				}),
 			huh.NewInput().Title("Unit").Description("e.g. £").Value(&f.unit),
-			huh.NewSelect[int64]().Title("Under").Options(opts...).Value(&f.parent),
+			huh.NewSelect[int64]().Title("Under").Options(opts...).Value(&f.parent).Height(8),
 		).Title(title),
 	).WithShowHelp(true)
+	f.resize(width, height)
 	return f
+}
+
+// resize fits the form to the space the TUI gives it.
+func (f *goalForm) resize(width, height int) {
+	f.form = f.form.WithWidth(max(20, width)).WithHeight(max(10, height))
+}
+
+// filtering reports whether the focused field is a select with its filter
+// open, in which case Esc belongs to the field rather than to the form.
+func (f *goalForm) filtering() bool {
+	if sel, ok := f.form.GetFocusedField().(*huh.Select[int64]); ok {
+		return sel.GetFiltering()
+	}
+	return false
 }
 
 func parseTarget(s string) (float64, error) {

@@ -70,7 +70,7 @@ func runCmd(c tea.Cmd) tea.Msg {
 	select {
 	case msg := <-ch:
 		return msg
-	case <-time.After(5 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 		return nil
 	}
 }
@@ -307,6 +307,49 @@ func TestEditViaForm(t *testing.T) {
 	g, _ := store.Get(context.Background(), 2)
 	if g.Statement != "finish the garden in september" || g.ParentID == nil || *g.ParentID != 1 {
 		t.Errorf("after edit: %+v", g)
+	}
+}
+
+func TestEditKeepsExactTarget(t *testing.T) {
+	m, store := setup(t)
+	ctx := context.Background()
+	tiny, _ := store.Add(ctx, goal.NewGoal{Statement: "tiny", Period: "2026-01", Target: 0.004})
+	frac, _ := store.Add(ctx, goal.NewGoal{Statement: "frac", Period: "2026-02", Target: 1.2345})
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{tiny.ID, frac.ID} {
+		for i, r := range m.rows {
+			if r.Goal.ID == id {
+				m.cursor = i
+			}
+		}
+		before, _ := store.Get(ctx, id)
+		press(m, "e")
+		typeText(m, "!")
+		press(m, "enter", "enter", "enter", "enter", "enter", "enter")
+		if m.mode != modeBrowse || m.err != nil {
+			t.Fatalf("edit of #%d did not save: mode=%v err=%v", id, m.mode, m.err)
+		}
+		after, _ := store.Get(ctx, id)
+		if after.Statement != before.Statement+"!" {
+			t.Errorf("#%d statement = %q", id, after.Statement)
+		}
+		if after.Target != before.Target || after.Kind != goal.Numeric {
+			t.Errorf("#%d target changed by an unrelated edit: %v -> %v (%s)", id, before.Target, after.Target, after.Kind)
+		}
+	}
+}
+
+func TestFormResizes(t *testing.T) {
+	m, _ := setup(t)
+	press(m, "a")
+	deliver(m, tea.WindowSizeMsg{Width: 60, Height: 20})
+	if m.mode != modeForm || m.form == nil {
+		t.Fatal("resize closed the form")
+	}
+	if w := lipgloss.Width(m.View().Content); w > 60 {
+		t.Errorf("form view is %d wide after resize to 60", w)
 	}
 }
 

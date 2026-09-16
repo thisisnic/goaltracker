@@ -101,6 +101,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		if m.mode == modeForm && m.form != nil {
+			m.form.resize(m.formSize())
+		}
 		return m, nil
 	case tea.KeyPressMsg:
 		switch m.mode {
@@ -119,18 +122,26 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// bodyHeight is the height of the main panes: everything but the title,
+// status and help lines.
+func (m *model) bodyHeight() int { return max(5, m.height-3) }
+
+// formSize is the content area inside the form's pane.
+func (m *model) formSize() (int, int) { return m.width - 4, m.bodyHeight() - 2 }
+
 func (m *model) openForm(existing *goal.Goal) tea.Cmd {
 	var id int64
 	if existing != nil {
 		id = existing.ID
 	}
-	m.form = newGoalForm(existing, parentCandidates(m.rows, id), time.Now().Format("2006"))
+	w, h := m.formSize()
+	m.form = newGoalForm(existing, parentCandidates(m.rows, id), time.Now().Format("2006"), w, h)
 	m.mode = modeForm
 	return m.form.Init()
 }
 
 func (m *model) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if k, ok := msg.(tea.KeyPressMsg); ok && k.String() == "esc" {
+	if k, ok := msg.(tea.KeyPressMsg); ok && k.String() == "esc" && !m.form.filtering() {
 		m.mode = modeBrowse
 		m.form = nil
 		m.status = "cancelled"
@@ -153,7 +164,10 @@ func (m *model) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.form = nil
-	m.err = m.reload()
+	if err := m.reload(); err != nil {
+		m.err = err
+		return m, nil
+	}
 	for i, r := range m.rows {
 		if r.Goal.ID == g.ID {
 			m.cursor = i
@@ -299,7 +313,7 @@ var (
 func (m *model) View() tea.View {
 	listW := m.width * 55 / 100
 	detailW := m.width - listW
-	bodyH := max(5, m.height-3) // title + status + help
+	bodyH := m.bodyHeight()
 
 	// paneStyle's Width and Height include its border and padding, so the
 	// content area is 4 narrower (border 2 + padding 2) and 2 shorter.
