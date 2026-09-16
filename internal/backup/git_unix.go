@@ -11,17 +11,21 @@ import (
 )
 
 // killGrace is how long the process group gets to exit after SIGTERM
-// before it is killed outright.
+// before it is killed outright. It must be shorter than the WaitDelay set
+// in git(), so the kill lands before Run stops waiting.
 const killGrace = 2 * time.Second
 
 // detach runs cmd in its own session, away from the controlling terminal,
 // and arranges for the whole process group to be stopped on cancel so a
 // hung ssh child does not outlive git. The group gets SIGTERM first, which
-// git handles by removing its lock files, then SIGKILL if it lingers. If
-// the group is already gone the command finished on its own, which is not
-// an error.
-func detach(cmd *exec.Cmd) {
+// git handles by removing its lock files, then SIGKILL if it lingers. The
+// returned function must be called once the command has finished; it stops
+// the pending SIGKILL so it can never hit a process group that has since
+// been given the same id. If the group is already gone the command finished
+// on its own, which is not an error.
+func detach(cmd *exec.Cmd) (done func()) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	var escalate *time.Timer
 	cmd.Cancel = func() error {
 		pgid := -cmd.Process.Pid
 		err := syscall.Kill(pgid, syscall.SIGTERM)
@@ -31,10 +35,12 @@ func detach(cmd *exec.Cmd) {
 		if err != nil {
 			return err
 		}
-		go func() {
-			time.Sleep(killGrace)
-			syscall.Kill(pgid, syscall.SIGKILL)
-		}()
+		escalate = time.AfterFunc(killGrace, func() { syscall.Kill(pgid, syscall.SIGKILL) })
 		return nil
+	}
+	return func() {
+		if escalate != nil {
+			escalate.Stop()
+		}
 	}
 }

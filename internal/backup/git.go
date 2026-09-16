@@ -127,15 +127,16 @@ func pushError(ctx context.Context, err error) error {
 // git runs a git command in dir with no way to prompt: git's own prompts
 // are off, ssh's askpass is off, and on Unix the process runs detached from
 // the terminal in its own session so ssh cannot open /dev/tty. The user's
-// own ssh configuration is left alone. If the context ends, the whole
-// process group is killed and Run gives up waiting on any child that still
-// holds the output pipes.
+// own ssh configuration is left alone. If the context ends, the process
+// group is asked to stop (SIGTERM, then SIGKILL on Unix) and Run gives up
+// waiting on any child that still holds the output pipes after WaitDelay,
+// which is longer than the Unix kill grace.
 func git(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "SSH_ASKPASS_REQUIRE=never")
-	cmd.WaitDelay = 5 * time.Second // longer than detach's kill grace
-	detach(cmd)
+	cmd.WaitDelay = 5 * time.Second
+	defer detach(cmd)()
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
