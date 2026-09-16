@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/thisisnic/lifeo/internal/goal"
 )
@@ -301,22 +302,14 @@ func (m *model) viewList(w, h int) string {
 	return strings.Join(lines, "\n")
 }
 
-// fit pads or truncates left so that right sits flush at width w.
+// fit pads or truncates left so that right sits flush at width w. Both the
+// measurement and the cut use display width, so wide characters count as
+// two columns.
 func fit(left, right string, w int) string {
-	avail := w - lipgloss.Width(right)
-	if lipgloss.Width(left) > avail {
-		left = truncate(left, max(0, avail-1)) + "…"
-	}
+	avail := max(0, w-lipgloss.Width(right))
+	left = ansi.Truncate(left, avail, "…")
 	pad := max(0, avail-lipgloss.Width(left))
 	return left + strings.Repeat(" ", pad) + right
-}
-
-func truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n])
 }
 
 func (m *model) viewDetail(w int) string {

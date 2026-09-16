@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/thisisnic/lifeo/internal/goal"
 )
@@ -99,6 +100,46 @@ func TestProgressFlow(t *testing.T) {
 	press(m, "j", "p")
 	if m.mode != modeBrowse || !strings.Contains(m.status, "yes/no") {
 		t.Errorf("progress on yes/no goal: mode=%v status=%q", m.mode, m.status)
+	}
+}
+
+func TestFit(t *testing.T) {
+	cases := []struct {
+		left, right string
+		w           int
+	}{
+		{"short", "50%", 20},
+		{"a long statement that will not fit in the pane", "50%", 20},
+		{"日本語の目標をここに書く", "24%", 14}, // wide runes
+		{"no right side", "", 8},
+	}
+	for _, c := range cases {
+		got := fit(c.left, c.right, c.w)
+		if lipgloss.Width(got) != c.w {
+			t.Errorf("fit(%q,%q,%d) width = %d want %d: %q", c.left, c.right, c.w, lipgloss.Width(got), c.w, got)
+		}
+		if !strings.HasSuffix(got, c.right) {
+			t.Errorf("fit(%q,%q,%d) = %q, right side not flush", c.left, c.right, c.w, got)
+		}
+	}
+}
+
+func TestDeleteFailureStaysVisible(t *testing.T) {
+	m, store := setup(t)
+	press(m, "j")
+	// Remove the selected goal behind the TUI's back so its delete fails.
+	if err := store.Delete(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+	press(m, "d", "y")
+	if m.err == nil {
+		t.Error("failed delete reported no error")
+	}
+	if m.mode != modeBrowse {
+		t.Errorf("mode = %v want browse", m.mode)
+	}
+	if !strings.Contains(m.View().Content, "error:") {
+		t.Error("error not shown in status line")
 	}
 }
 
