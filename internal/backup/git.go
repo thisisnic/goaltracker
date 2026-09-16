@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -19,7 +18,7 @@ import (
 // caller can treat that as a warning: the backup is safe on disk and the
 // next push will carry it.
 func Push(ctx context.Context, dir string, now time.Time) error {
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+	if out, err := git(ctx, dir, "rev-parse", "--is-inside-work-tree"); err != nil || strings.TrimSpace(out) != "true" {
 		return fmt.Errorf("%s is not a git repository; run git init there or set git = false", dir)
 	}
 	if _, err := git(ctx, dir, "add", "--", FileName); err != nil {
@@ -40,7 +39,13 @@ func Push(ctx context.Context, dir string, now time.Time) error {
 // ErrPushFailed marks a push that failed after the commit succeeded.
 var ErrPushFailed = errors.New("push failed")
 
+// pushTimeout bounds the network step so a hung remote cannot block the
+// TUI from exiting for long.
+const pushTimeout = 60 * time.Second
+
 func push(ctx context.Context, dir string) error {
+	ctx, cancel := context.WithTimeout(ctx, pushTimeout)
+	defer cancel()
 	if _, err := git(ctx, dir, "rev-parse", "--verify", "-q", "HEAD"); err != nil {
 		return nil // nothing committed yet, nothing to push
 	}
@@ -51,7 +56,7 @@ func push(ctx context.Context, dir string) error {
 			return nil
 		}
 		if _, err := git(ctx, dir, "push", "-q"); err != nil {
-			return fmt.Errorf("%w: %v", ErrPushFailed, err)
+			return pushError(err)
 		}
 		return nil
 	}
@@ -61,16 +66,35 @@ func push(ctx context.Context, dir string) error {
 		return err
 	}
 	if _, err := git(ctx, dir, "push", "-q", "-u", "origin", strings.TrimSpace(branch)); err != nil {
-		return fmt.Errorf("%w: %v", ErrPushFailed, err)
+		return pushError(err)
 	}
 	return nil
 }
 
-// git runs a git command in dir with no terminal prompts.
+// pushError wraps a failed push, adding a hint for the causes that will
+// not fix themselves on retry.
+func pushError(err error) error {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "non-fast-forward") || strings.Contains(msg, "fetch first") || strings.Contains(msg, "rejected"):
+		return fmt.Errorf("%w: the remote has newer commits, perhaps a backup from another machine; run git pull in the backup folder and pick which lifeo.db.age to keep: %v", ErrPushFailed, err)
+	case strings.Contains(msg, "does not appear to be a git repository") || strings.Contains(msg, "No such remote") || strings.Contains(msg, "'origin' does not appear"):
+		return fmt.Errorf("%w: the backup folder has no origin remote: %v", ErrPushFailed, err)
+	case strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "killed"):
+		return fmt.Errorf("%w: gave up after %s: %v", ErrPushFailed, pushTimeout, err)
+	}
+	return fmt.Errorf("%w: %v", ErrPushFailed, err)
+}
+
+// git runs a git command in dir with no terminal prompts, from git itself
+// or from ssh, so a backup on quit can never sit waiting for input.
 func git(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if os.Getenv("GIT_SSH_COMMAND") == "" {
+		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+	}
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {

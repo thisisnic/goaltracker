@@ -14,17 +14,25 @@ import (
 
 // gitRepos makes a bare "remote" and a clone of it at dir, with an
 // upstream set, so Push has somewhere to go.
+// isolateGit keeps the developer's git config and identity out of the test.
+func isolateGit(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
+}
+
 func gitRepos(t *testing.T, dir string) (remote string) {
 	t.Helper()
+	isolateGit(t)
 	remote = filepath.Join(t.TempDir(), "remote.git")
 	run := func(cwd string, args ...string) string {
 		t.Helper()
 		cmd := exec.Command("git", args...)
 		cmd.Dir = cwd
-		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
-			"HOME="+t.TempDir(), // ignore the developer's git config
-		)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -50,10 +58,6 @@ func remoteLog(t *testing.T, remote string) string {
 func TestPushCommitsAndPushes(t *testing.T) {
 	e := newEnv(t)
 	remote := gitRepos(t, e.opts.Dir)
-	t.Setenv("GIT_AUTHOR_NAME", "t")
-	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
-	t.Setenv("GIT_COMMITTER_NAME", "t")
-	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
 	ctx := context.Background()
 
 	e.run(t)
@@ -88,10 +92,6 @@ func TestPushCommitsAndPushes(t *testing.T) {
 func TestPushFailureIsRetried(t *testing.T) {
 	e := newEnv(t)
 	remote := gitRepos(t, e.opts.Dir)
-	t.Setenv("GIT_AUTHOR_NAME", "t")
-	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
-	t.Setenv("GIT_COMMITTER_NAME", "t")
-	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
 	ctx := context.Background()
 	e.run(t)
 
@@ -119,25 +119,54 @@ func TestPushFailureIsRetried(t *testing.T) {
 	if !strings.Contains(remoteLog(t, remote), "lifeo backup") {
 		t.Error("earlier commit was not pushed on retry")
 	}
+
+	// A rejected push, because the remote moved on, says what to do.
+	other := filepath.Join(t.TempDir(), "other")
+	for _, args := range [][]string{
+		{"clone", "-q", remote, other},
+		{"-C", other, "commit", "-q", "--allow-empty", "-m", "from another machine"},
+		{"-C", other, "push", "-q"},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if _, err := e.store.Add(ctx, goal.NewGoal{Statement: "y", Period: "2026"}); err != nil {
+		t.Fatal(err)
+	}
+	e.run(t)
+	err = Push(ctx, e.opts.Dir, now)
+	if !errors.Is(err, ErrPushFailed) || !strings.Contains(err.Error(), "git pull") {
+		t.Errorf("rejected push: err = %v, want a pull hint", err)
+	}
+}
+
+func TestPushSubfolderOfRepo(t *testing.T) {
+	e := newEnv(t)
+	parent := filepath.Join(t.TempDir(), "repo")
+	remote := gitRepos(t, parent)
+	e.opts.Dir = filepath.Join(parent, "nested")
+	e.run(t)
+	if err := Push(context.Background(), e.opts.Dir, now); err != nil {
+		t.Fatalf("push from a subfolder of the repo: %v", err)
+	}
+	if !strings.Contains(remoteLog(t, remote), "lifeo backup") {
+		t.Error("subfolder backup was not pushed")
+	}
 }
 
 func TestPushFromFreshCloneSetsUpstream(t *testing.T) {
 	e := newEnv(t)
+	isolateGit(t)
 	remote := filepath.Join(t.TempDir(), "remote.git")
 	for _, args := range [][]string{
 		{"init", "-q", "--bare", "-b", "main", remote},
 		{"clone", "-q", remote, e.opts.Dir},
 	} {
-		cmd := exec.Command("git", args...)
-		cmd.Env = append(os.Environ(), "HOME="+t.TempDir())
-		if out, err := cmd.CombinedOutput(); err != nil {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
-	t.Setenv("GIT_AUTHOR_NAME", "t")
-	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
-	t.Setenv("GIT_COMMITTER_NAME", "t")
-	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
 	ctx := context.Background()
 	e.run(t)
 	if err := Push(ctx, e.opts.Dir, now); err != nil {
@@ -154,6 +183,7 @@ func TestPushFromFreshCloneSetsUpstream(t *testing.T) {
 
 func TestPushNeedsRepo(t *testing.T) {
 	e := newEnv(t)
+	isolateGit(t)
 	e.run(t)
 	if err := Push(context.Background(), e.opts.Dir, now); err == nil || !strings.Contains(err.Error(), "not a git repository") {
 		t.Errorf("err = %v", err)

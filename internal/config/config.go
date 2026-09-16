@@ -95,8 +95,9 @@ recipient = %q
 identity_file = %q
 # Write a snapshot every time the TUI exits.
 on_quit = true
-# After each backup, git commit and push from dir. Needs the folder to be a
-# clone with an upstream and credentials that work without a prompt.
-git = true
+# Set to true once dir is a git clone with a remote, and lifeo will commit
+# and push after each backup. Needs credentials that work without a prompt,
+# such as an SSH key loaded in an agent.
+git = false
 `, recipient, identityFile)
 }

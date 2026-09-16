@@ -119,7 +119,7 @@ func runBackup(cmd *cobra.Command, store *goal.Store, dbPath string, b config.Ba
 		return nil
 	case errors.Is(err, backup.ErrPushFailed):
 		// The backup and its commit are safe locally; the next run retries.
-		fmt.Fprintf(cmd.ErrOrStderr(), "backup: committed but not pushed (offline?): %v\n", err)
+		fmt.Fprintf(cmd.ErrOrStderr(), "backup: committed locally but not pushed; will retry next time. %v\n", err)
 		return nil
 	default:
 		return fmt.Errorf("backup git: %w", err)

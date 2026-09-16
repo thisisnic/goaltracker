@@ -25,7 +25,7 @@ func TestLoadExpandsHome(t *testing.T) {
 	if c.Backup.Dir != filepath.Join(home, "lifeo-data") || c.Backup.IdentityFile != filepath.Join(home, ".config/lifeo/key.txt") {
 		t.Errorf("paths not expanded: %+v", c.Backup)
 	}
-	if c.Backup.Recipient != "age1abc" || !c.Backup.OnQuit || !c.Backup.Git || !c.Backup.Configured() {
+	if c.Backup.Recipient != "age1abc" || !c.Backup.OnQuit || c.Backup.Git || !c.Backup.Configured() {
 		t.Errorf("fields: %+v", c.Backup)
 	}
 }

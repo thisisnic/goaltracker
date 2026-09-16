@@ -62,7 +62,7 @@ dir = "~/lifeo-data"          # your private data repo
 recipient = "age1..."         # public key, encrypts
 identity_file = "~/.config/lifeo/key.txt"  # private key, decrypts
 on_quit = true                # back up every time the UI exits
-git = true                    # then git commit and push from dir
+git = false                   # true: git commit and push from dir too
 ```
 
 Keep a copy of the private key in a password manager. Without it the
