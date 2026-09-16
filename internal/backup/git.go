@@ -47,7 +47,7 @@ func Push(ctx context.Context, dir string, now time.Time) error {
 			// nothing is staged any more, it landed, and this is a push
 			// failure rather than a cancellation.
 			if committed(dir) {
-				return pushError(ctx, err)
+				return fmt.Errorf("%w: committed, but the run was cancelled before pushing: %v", ErrPushFailed, cerr)
 			}
 			return fmt.Errorf("backup git cancelled: %w", cerr)
 		}
@@ -134,7 +134,7 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "SSH_ASKPASS_REQUIRE=never")
-	cmd.WaitDelay = 5 * time.Second
+	cmd.WaitDelay = 5 * time.Second // longer than detach's kill grace
 	detach(cmd)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb

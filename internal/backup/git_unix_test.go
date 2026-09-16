@@ -108,3 +108,33 @@ func TestPushExpiringDuringCommitIsCancellation(t *testing.T) {
 		t.Errorf("retry after cancellation: %v", err)
 	}
 }
+
+func TestPushExpiringAfterCommitIsPushFailure(t *testing.T) {
+	e := newEnv(t)
+	remote := gitRepos(t, e.opts.Dir)
+	e.run(t)
+	before, _ := exec.Command("git", "-C", e.opts.Dir, "rev-parse", "HEAD").Output()
+	// A post-commit hook runs after the commit is written and the index
+	// lock released, so the deadline hits with the commit already landed.
+	hook := filepath.Join(e.opts.Dir, ".git", "hooks", "post-commit")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nsleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	err := Push(ctx, e.opts.Dir, now)
+	if !errors.Is(err, ErrPushFailed) || !strings.Contains(err.Error(), "committed, but") {
+		t.Errorf("Push expiring after commit: %v", err)
+	}
+	after, _ := exec.Command("git", "-C", e.opts.Dir, "rev-parse", "HEAD").Output()
+	if string(after) == string(before) {
+		t.Error("HEAD did not move; the commit did not land")
+	}
+	os.Remove(hook)
+	if err := Push(context.Background(), e.opts.Dir, now); err != nil {
+		t.Errorf("retry: %v", err)
+	}
+	if !strings.Contains(remoteLog(t, remote), "lifeo backup") {
+		t.Error("the landed commit was not pushed on retry")
+	}
+}
