@@ -232,8 +232,10 @@ func TestPushCancelledContextIsNotSuccess(t *testing.T) {
 	e.run(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := Push(ctx, e.opts.Dir, now)
-	if err == nil {
-		t.Fatal("push with a cancelled context reported success")
+	if err := Push(ctx, e.opts.Dir, now); !errors.Is(err, ErrPushFailed) || strings.Contains(err.Error(), "not a git repository") {
+		t.Errorf("Push with a cancelled context: %v", err)
+	}
+	if err := push(ctx, e.opts.Dir); !errors.Is(err, ErrPushFailed) {
+		t.Errorf("push with a cancelled context: %v", err)
 	}
 }

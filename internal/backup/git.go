@@ -19,6 +19,9 @@ import (
 // next push will carry it.
 func Push(ctx context.Context, dir string, now time.Time) error {
 	if out, err := git(ctx, dir, "rev-parse", "--is-inside-work-tree"); err != nil || strings.TrimSpace(out) != "true" {
+		if ctx.Err() != nil {
+			return pushError(ctx, err)
+		}
 		return fmt.Errorf("%s is not a git repository; run git init there or set git = false", dir)
 	}
 	if _, err := git(ctx, dir, "add", "--", FileName); err != nil {

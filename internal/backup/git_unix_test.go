@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -57,6 +58,9 @@ func TestPushGivesUpOnHungRemote(t *testing.T) {
 	gone := func() bool {
 		if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
 			return true
+		}
+		if runtime.GOOS != "linux" {
+			return false // no /proc to tell a zombie from a live process
 		}
 		stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 		if err != nil {
