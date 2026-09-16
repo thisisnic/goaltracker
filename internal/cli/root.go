@@ -34,6 +34,7 @@ func DefaultDBPath() string {
 // New builds the root command.
 func New() *cobra.Command {
 	var dbPath string
+	var private bool
 	root := &cobra.Command{
 		Use:   "lifeo",
 		Short: "A personal tracker for goals, plans and time",
@@ -41,7 +42,11 @@ func New() *cobra.Command {
 
 Run it with no arguments to open the terminal UI. Subcommands give the same
 data a scriptable interface; add --json to any list or show command for
-machine-readable output.`,
+machine-readable output.
+
+Somewhere you'd rather not have people read over your shoulder, start with
+--private (or set LIFEO_PRIVATE=1) to hide the why, amounts and notes.
+Press x in the UI to toggle it.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,10 +55,11 @@ machine-readable output.`,
 				return err
 			}
 			defer store.Close()
-			return tui.Run(cmd.Context(), store)
+			return tui.Run(cmd.Context(), store, tui.Options{Private: private})
 		},
 	}
 	root.PersistentFlags().StringVar(&dbPath, "db", DefaultDBPath(), "path to the SQLite database (env LIFEO_DB)")
+	root.Flags().BoolVar(&private, "private", os.Getenv("LIFEO_PRIVATE") != "", "start with the why, amounts and notes hidden; x toggles (env LIFEO_PRIVATE)")
 	root.AddCommand(goalCmd(&dbPath))
 	return root
 }

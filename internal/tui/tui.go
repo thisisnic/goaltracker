@@ -16,9 +16,16 @@ import (
 	"github.com/thisisnic/lifeo/internal/goal"
 )
 
+// Options adjust how the TUI starts.
+type Options struct {
+	// Private hides the why, amounts and history notes until toggled off.
+	Private bool
+}
+
 // Run opens the goals view and blocks until the user quits.
-func Run(ctx context.Context, store *goal.Store) error {
+func Run(ctx context.Context, store *goal.Store, opts Options) error {
 	m := newModel(ctx, store)
+	m.private = opts.Private
 	if err := m.reload(); err != nil {
 		return err
 	}
@@ -45,11 +52,12 @@ type model struct {
 	width  int
 	height int
 
-	mode   mode
-	form   *goalForm
-	input  textinput.Model
-	status string
-	err    error
+	mode    mode
+	private bool // hide the why, amounts and notes from onlookers
+	form    *goalForm
+	input   textinput.Model
+	status  string
+	err     error
 }
 
 func newModel(ctx context.Context, store *goal.Store) *model {
@@ -211,6 +219,13 @@ func (m *model) updateBrowse(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.err = m.reload()
 		m.status = "reloaded"
+	case "x":
+		m.private = !m.private
+		if m.private {
+			m.status = "private: why, amounts and notes hidden"
+		} else {
+			m.status = "private off"
+		}
 	case "h":
 		m.mark(goal.Hit)
 	case "m":
@@ -281,7 +296,11 @@ func (m *model) updateProgress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeBrowse
 		m.input.Blur()
 		m.err = m.reload()
-		m.status = fmt.Sprintf("recorded %s on #%d", g.Amount(v), g.ID)
+		if m.private {
+			m.status = fmt.Sprintf("recorded new total on #%d", g.ID)
+		} else {
+			m.status = fmt.Sprintf("recorded %s on #%d", g.Amount(v), g.ID)
+		}
 		return m, nil
 	}
 	var cmd tea.Cmd
@@ -307,6 +326,9 @@ func (m *model) updateConfirm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// hidden stands in for a value in private mode.
+const hidden = "••••"
+
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
 	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -330,6 +352,9 @@ func (m *model) View() tea.View {
 
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("lifeo · goals"))
+	if m.private {
+		b.WriteString(dimStyle.Render(" · private"))
+	}
 	b.WriteString("\n")
 	if m.mode == modeForm && m.form != nil {
 		b.WriteString(paneStyle.Width(m.width).Height(bodyH).Render(clipLines(m.form.View(), bodyH-2)))
@@ -420,6 +445,12 @@ func (m *model) viewDetail(w, h int) string {
 	}
 	wrap := lipgloss.NewStyle().Width(w)
 	cut := func(line string) string { return ansi.Truncate(line, w, "…") }
+	amount := func(v float64) string {
+		if m.private {
+			return hidden
+		}
+		return g.Amount(v)
+	}
 
 	var meta []string
 	meta = append(meta, cut(fmt.Sprintf("%s %s (%s)   %s #%d", labelStyle.Render("period"), g.Period, g.Level, labelStyle.Render("id"), g.ID)))
@@ -432,7 +463,7 @@ func (m *model) viewDetail(w, h int) string {
 	prog = append(prog, "")
 	switch g.Kind {
 	case goal.Numeric:
-		prog = append(prog, cut(fmt.Sprintf("%s %s / %s", labelStyle.Render("progress"), g.Amount(g.Current), g.Amount(g.Target))))
+		prog = append(prog, cut(fmt.Sprintf("%s %s / %s", labelStyle.Render("progress"), amount(g.Current), amount(g.Target))))
 		prog = append(prog, bar(g.Percent(), w))
 	default:
 		prog = append(prog, labelStyle.Render("progress")+" yes/no")
@@ -462,16 +493,19 @@ func (m *model) viewDetail(w, h int) string {
 
 	var why []string
 	if g.Why != "" && free > 0 {
-		lines := strings.Split(wrap.Render(g.Why), "\n")
 		why = append(why, "", labelStyle.Render("why"))
-		why = append(why, lines...)
+		if m.private {
+			why = append(why, dimStyle.Render(hidden))
+		} else {
+			why = append(why, strings.Split(wrap.Render(g.Why), "\n")...)
+		}
 	}
 	var hist []string
 	if len(m.hist) > 0 && free > 0 {
 		hist = append(hist, "", labelStyle.Render("history"))
 		for _, p := range m.hist {
-			line := fmt.Sprintf("  %s  %s", p.RecordedAt.Local().Format("2006-01-02"), g.Amount(p.Value))
-			if p.Note != "" {
+			line := fmt.Sprintf("  %s  %s", p.RecordedAt.Local().Format("2006-01-02"), amount(p.Value))
+			if p.Note != "" && !m.private {
 				line += "  " + dimStyle.Render(p.Note)
 			}
 			hist = append(hist, cut(line))
@@ -582,5 +616,5 @@ func (m *model) helpLine() string {
 	if m.mode == modeForm {
 		return "enter next · shift+tab back · esc cancel"
 	}
-	return "a add · e edit · p progress · h hit · m missed · c clear · d delete · j/k move · q quit"
+	return "a add · e edit · p progress · h hit · m missed · c clear · d delete · x private · j/k move · q quit"
 }

@@ -464,6 +464,58 @@ func TestProgressInputVisibleWithLongWhy(t *testing.T) {
 	}
 }
 
+func TestPrivateModeHidesSensitiveText(t *testing.T) {
+	m, store := setup(t)
+	ctx := context.Background()
+	// The statement is the user's own words and is never redacted, so use
+	// one without the number in it here.
+	plain := "earn the revenue target"
+	if _, err := store.Update(ctx, 1, goal.Edit{Statement: &plain}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RecordProgress(ctx, 1, 35000, "secret client paid"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	visible := ansi.Strip(m.View().Content)
+	for _, want := range []string{"for good reasons", "£35,000", "£70,000", "secret client paid"} {
+		if !strings.Contains(visible, want) {
+			t.Errorf("normal view missing %q", want)
+		}
+	}
+
+	press(m, "x")
+	if !m.private {
+		t.Fatal("x did not turn private mode on")
+	}
+	private := ansi.Strip(m.View().Content)
+	for _, leak := range []string{"for good reasons", "35,000", "70,000", "secret client paid"} {
+		if strings.Contains(private, leak) {
+			t.Errorf("private view shows %q", leak)
+		}
+	}
+	for _, want := range []string{"private", "why", "history", "50%", hidden} {
+		if !strings.Contains(private, want) {
+			t.Errorf("private view missing %q", want)
+		}
+	}
+
+	// Recording progress while private must not echo the amount.
+	press(m, "p")
+	typeText(m, "40000")
+	press(m, "enter")
+	if strings.Contains(ansi.Strip(m.View().Content), "40,000") {
+		t.Error("status line leaked the new amount in private mode")
+	}
+
+	press(m, "x")
+	if m.private || !strings.Contains(ansi.Strip(m.View().Content), "for good reasons") {
+		t.Error("x did not turn private mode off")
+	}
+}
+
 func TestClipHelpers(t *testing.T) {
 	sec := []string{"", "label", "l1", "l2", "l3", "l4"}
 	for n, want := range map[int]int{0: 0, 1: 0, 2: 0, 3: 3, 4: 4, 6: 6, 9: 6} {
