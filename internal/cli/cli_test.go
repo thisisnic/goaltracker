@@ -185,3 +185,63 @@ func TestEnvFailClosed(t *testing.T) {
 		}
 	}
 }
+
+func TestKeyBackupRestore(t *testing.T) {
+	r := newRunner(t)
+	root := t.TempDir()
+	keyFile := filepath.Join(root, "key.txt")
+	cfgPath := filepath.Join(root, "config.toml")
+	dir := filepath.Join(root, "data-repo")
+
+	out := r.run("", false, "key", "new", "--out", keyFile)
+	var recipient string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "public key: ") {
+			recipient = strings.TrimPrefix(line, "public key: ")
+		}
+	}
+	if !strings.HasPrefix(recipient, "age1") {
+		t.Fatalf("no public key in output:\n%s", out)
+	}
+	r.run("", true, "key", "new", "--out", keyFile) // refuses to overwrite
+
+	// Without config, backup explains what to do.
+	if msg := r.run("", true, "--config", cfgPath, "backup"); !strings.Contains(msg, "lifeo key new") {
+		t.Errorf("unconfigured backup error: %q", msg)
+	}
+
+	cfg := "[backup]\ndir = \"" + dir + "\"\nrecipient = \"" + recipient + "\"\nidentity_file = \"" + keyFile + "\"\non_quit = true\n"
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r.run("", false, "goal", "add", "keep this", "--period", "2026")
+	out = r.run("", false, "--config", cfgPath, "backup")
+	if !strings.Contains(out, "backup: wrote ") {
+		t.Fatalf("backup output: %q", out)
+	}
+	snapshot := strings.TrimSpace(strings.TrimPrefix(out, "backup: wrote "))
+	if out := r.run("", false, "--config", cfgPath, "backup"); !strings.Contains(out, "no changes") {
+		t.Errorf("second backup: %q", out)
+	}
+
+	r.run("", false, "goal", "delete", "1", "-y")
+	if got := strings.TrimSpace(r.run("", false, "goal", "list", "--json")); got != "[]" {
+		t.Fatal("goal not deleted")
+	}
+
+	if out := r.run("n\n", false, "--config", cfgPath, "restore", snapshot); !strings.Contains(out, "kept") {
+		t.Errorf("declined restore: %q", out)
+	}
+	out = r.run("", false, "--config", cfgPath, "restore", snapshot, "-y")
+	if !strings.Contains(out, "restored") || !strings.Contains(out, ".bak") {
+		t.Errorf("restore output: %q", out)
+	}
+	if out := r.run("", false, "goal", "list"); !strings.Contains(out, "keep this") {
+		t.Errorf("goal not back after restore:\n%s", out)
+	}
+	// Restore without any key configured or given fails clearly.
+	if msg := r.run("", true, "--config", filepath.Join(root, "none.toml"), "restore", snapshot, "-y"); !strings.Contains(msg, "no private key") {
+		t.Errorf("restore without key: %q", msg)
+	}
+}

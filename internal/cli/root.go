@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/thisisnic/lifeo/internal/config"
 	"github.com/thisisnic/lifeo/internal/goal"
 	"github.com/thisisnic/lifeo/internal/tui"
 )
@@ -34,7 +35,7 @@ func DefaultDBPath() string {
 
 // New builds the root command.
 func New() *cobra.Command {
-	var dbPath string
+	var dbPath, cfgPath string
 	var private bool
 	root := &cobra.Command{
 		Use:   "lifeo",
@@ -47,21 +48,36 @@ machine-readable output.
 
 Somewhere you'd rather not have people read over your shoulder, start with
 --private (or set LIFEO_PRIVATE=1) to hide the why, amounts and notes.
-Press x in the UI to toggle it.`,
+Press x in the UI to toggle it.
+
+Backups are encrypted snapshots written to a folder you choose. Run
+lifeo key new once to set that up; with on_quit set in the config the
+TUI writes one every time it exits.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				return err
+			}
 			store, err := goal.Open(dbPath)
 			if err != nil {
 				return err
 			}
 			defer store.Close()
-			return tui.Run(cmd.Context(), store, tui.Options{Private: private})
+			if err := tui.Run(cmd.Context(), store, tui.Options{Private: private}); err != nil {
+				return err
+			}
+			if cfg.Backup.OnQuit && cfg.Backup.Configured() {
+				return runBackup(cmd, store, cfg.Backup)
+			}
+			return nil
 		},
 	}
 	root.PersistentFlags().StringVar(&dbPath, "db", DefaultDBPath(), "path to the SQLite database (env LIFEO_DB)")
+	root.PersistentFlags().StringVar(&cfgPath, "config", config.Path(), "path to the config file")
 	root.Flags().BoolVar(&private, "private", envFailClosed("LIFEO_PRIVATE"), "start with the why, amounts and notes hidden; x toggles (env LIFEO_PRIVATE=1)")
-	root.AddCommand(goalCmd(&dbPath))
+	root.AddCommand(goalCmd(&dbPath), keyCmd(), backupCmd(&dbPath, &cfgPath), restoreCmd(&dbPath, &cfgPath))
 	return root
 }
 

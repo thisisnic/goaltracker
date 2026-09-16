@@ -72,6 +72,19 @@ func Open(path string) (*Store, error) {
 // Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
+// SnapshotTo writes a consistent copy of the database to path using
+// VACUUM INTO, which is safe while the database is open and in WAL mode.
+// path must not already exist.
+func (s *Store) SnapshotTo(ctx context.Context, path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("snapshot %s: already exists", path)
+	}
+	if _, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, path); err != nil {
+		return fmt.Errorf("snapshot: %w", err)
+	}
+	return nil
+}
+
 // NewGoal is the input to Add.
 type NewGoal struct {
 	Statement string
