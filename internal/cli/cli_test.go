@@ -338,9 +338,14 @@ func fakeLatest(t *testing.T, tag string) {
 	t.Cleanup(func() { update.APIBase = old })
 }
 
+// The "downgraded" message after update --force on a newer build is not
+// covered here: the CLI always replaces its own executable, and the fake
+// server lists no assets. The update package tests cover the install path.
 func TestUpdateMessages(t *testing.T) {
 	r := newRunner(t)
 	fakeLatest(t, "v0.2.0")
+	old := version.Version
+	t.Cleanup(func() { version.Version = old })
 	cases := []struct {
 		current string
 		want    string
@@ -365,5 +370,4 @@ func TestUpdateMessages(t *testing.T) {
 	if out := r.run("", false, "update"); !strings.Contains(out, "already the latest") {
 		t.Errorf("update when current: %q", out)
 	}
-	version.Version = ""
 }

@@ -237,8 +237,10 @@ func TestUpdateNeverDowngrades(t *testing.T) {
 		wantErr error
 	}{
 		{"0.3.0", Newer, nil},
-		{"v0.2.1-0.20260910120000-abcdef123456", Newer, nil}, // go install @main pseudo-version
-		{"0.2.0+dirty", Current, nil},                        // checkout build at the tag
+		{"v0.2.1-0.20260910120000-abcdef123456", Newer, nil},                 // go install @main pseudo-version after a tag
+		{"v0.0.0-20260910120000-abcdef123456", Unknown, ErrNotRelease},       // checkout that can see no tags
+		{"v0.0.0-20260910120000-abcdef123456+dirty", Unknown, ErrNotRelease}, // the same with local changes
+		{"0.2.0+dirty", Current, nil},                                        // checkout build at the tag
 		{"dev", Unknown, ErrNotRelease},
 		{"(devel)", Unknown, ErrNotRelease},
 	}

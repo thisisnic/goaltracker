@@ -73,7 +73,9 @@ func compare(current, latest string) State {
 		return Unknown
 	}
 	if module.IsPseudoVersion(c) {
-		if base, err := module.PseudoVersionBase(c); err != nil || base == "" || base == "v0.0.0" {
+		// An empty base means no tag lies behind the version. An error
+		// covers the same with build metadata attached, such as +dirty.
+		if base, err := module.PseudoVersionBase(c); err != nil || base == "" {
 			return Unknown
 		}
 	}
