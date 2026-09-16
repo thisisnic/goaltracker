@@ -134,13 +134,28 @@ func hashOf(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// removeStaleTemps deletes temporary files left by a backup that was
-// killed part way, so they never end up committed to the data repo.
+// staleAfter is how old a temp file must be before it is treated as left
+// behind by a killed run rather than in use by a concurrent one.
+const staleAfter = 10 * time.Minute
+
+// removeStaleTemps deletes old temporary files left by a backup that was
+// killed part way, so they never end up committed to the data repo. Recent
+// ones may belong to another backup still running and are left alone.
 func removeStaleTemps(dir string) {
 	matches, _ := filepath.Glob(filepath.Join(dir, tmpPattern))
 	for _, m := range matches {
-		os.Remove(m)
+		if info, err := os.Stat(m); err == nil && time.Since(info.ModTime()) > staleAfter {
+			os.Remove(m)
+		}
 	}
+}
+
+// MarkerPath is where the skip marker for a given database and backup
+// folder goes inside stateDir, so different databases or folders sharing a
+// config directory do not overwrite each other's marker.
+func MarkerPath(stateDir, dbPath, dir string) string {
+	h := hashOf([]byte(dbPath + "\x00" + dir))
+	return filepath.Join(stateDir, "last-backup-"+h[:12])
 }
 
 // writeEncrypted encrypts plain to a temporary file beside path and renames
@@ -245,7 +260,10 @@ func Restore(backupFile, identityFile, dbPath string, now time.Time) (kept strin
 		// No live database, but stale WAL files would be applied to the
 		// restored one, so they must go.
 		for _, s := range sidecars {
-			os.Remove(dbPath + s)
+			if err := os.Remove(dbPath + s); err != nil && !os.IsNotExist(err) {
+				os.Remove(tmp)
+				return "", fmt.Errorf("remove stale %s: %w", dbPath+s, err)
+			}
 		}
 	} else {
 		kept = dbPath + ".bak"
@@ -280,9 +298,11 @@ func Restore(backupFile, identityFile, dbPath string, now time.Time) (kept strin
 }
 
 // undo moves a kept database and its WAL files back to dbPath after a
-// failed restore. If that also fails, the error says where the data is.
+// failed restore. The WAL files go first, so if anything fails the database
+// is still at kept, next to whatever WAL files are left, and the error can
+// say so truthfully.
 func undo(dbPath, kept string, cause error) (string, error) {
-	for _, s := range append([]string{""}, sidecars...) {
+	for _, s := range append(append([]string{}, sidecars...), "") {
 		if !exists(kept + s) {
 			continue
 		}

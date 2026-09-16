@@ -86,7 +86,7 @@ the config file unless given here.`,
 				return err
 			}
 			defer store.Close()
-			return runBackup(cmd, store, cfg.Backup)
+			return runBackup(cmd, store, *dbPath, cfg.Backup)
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "backup folder (overrides config)")
@@ -95,11 +95,11 @@ the config file unless given here.`,
 }
 
 // runBackup takes a snapshot and reports what happened on stdout.
-func runBackup(cmd *cobra.Command, store *goal.Store, b config.Backup) error {
+func runBackup(cmd *cobra.Command, store *goal.Store, dbPath string, b config.Backup) error {
 	res, err := backup.Run(cmd.Context(), store, backup.Options{
 		Dir:       b.Dir,
 		Recipient: b.Recipient,
-		Marker:    filepath.Join(config.Dir(), "last-backup"),
+		Marker:    backup.MarkerPath(config.Dir(), dbPath, b.Dir),
 	})
 	if err != nil {
 		return fmt.Errorf("backup: %w", err)

@@ -192,14 +192,6 @@ func TestRunNoticesNewKeyMissingOrSwappedFile(t *testing.T) {
 		t.Error("swapped backup file was not rewritten")
 	}
 
-	// Stale temp files from a killed run are cleaned up.
-	stale := filepath.Join(e.opts.Dir, ".lifeo-backup-123.tmp")
-	os.WriteFile(stale, []byte("partial"), 0o600)
-	e.run(t)
-	if exists(stale) {
-		t.Error("stale temp file left in the repo folder")
-	}
-
 	// Without a marker every run writes.
 	e.opts.Marker = ""
 	if res := e.run(t); res.Skipped {
@@ -293,12 +285,13 @@ func TestRestoreUndoOnFailure(t *testing.T) {
 		}
 	}
 
-	// If the undo itself fails, the error says where the data is.
+	// If the undo itself fails on the WAL, the database is still at the
+	// kept path the error names, with its WAL beside it.
 	rename = func(from, to string) error {
 		if from == tmp {
 			return errors.New("disk on fire")
 		}
-		if strings.HasPrefix(from, e.dbPath+".bak") {
+		if strings.HasSuffix(from, ".bak-wal") {
 			return errors.New("still on fire")
 		}
 		return os.Rename(from, to)
@@ -307,8 +300,41 @@ func TestRestoreUndoOnFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "Your data is at") {
 		t.Fatalf("err = %v", err)
 	}
-	if kept == "" || !exists(kept) {
-		t.Errorf("kept = %q, want the path holding the data", kept)
+	if kept == "" || !exists(kept) || !exists(kept+"-wal") {
+		t.Errorf("kept = %q, want the path holding the database and its WAL", kept)
+	}
+	if exists(e.dbPath) {
+		t.Error("database moved back without its WAL")
+	}
+}
+
+func TestStaleTempsOnlyWhenOld(t *testing.T) {
+	e := newEnv(t)
+	os.MkdirAll(e.opts.Dir, 0o700)
+	fresh := filepath.Join(e.opts.Dir, ".lifeo-backup-fresh.tmp")
+	old := filepath.Join(e.opts.Dir, ".lifeo-backup-old.tmp")
+	os.WriteFile(fresh, []byte("in use"), 0o600)
+	os.WriteFile(old, []byte("abandoned"), 0o600)
+	past := time.Now().Add(-staleAfter - time.Minute)
+	os.Chtimes(old, past, past)
+	e.run(t)
+	if !exists(fresh) {
+		t.Error("a recent temp file, possibly another run's, was deleted")
+	}
+	if exists(old) {
+		t.Error("an old temp file was not cleaned up")
+	}
+}
+
+func TestMarkerPathDiffersPerDatabaseAndFolder(t *testing.T) {
+	a := MarkerPath("/state", "/db1", "/repo")
+	b := MarkerPath("/state", "/db2", "/repo")
+	c := MarkerPath("/state", "/db1", "/other")
+	if a == b || a == c || b == c {
+		t.Errorf("markers collide: %s %s %s", a, b, c)
+	}
+	if filepath.Dir(a) != "/state" || !strings.HasPrefix(filepath.Base(a), "last-backup-") {
+		t.Errorf("marker path = %s", a)
 	}
 }
 

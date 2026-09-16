@@ -71,7 +71,7 @@ TUI writes one every time it exits.`,
 				return fmt.Errorf("no backup on quit: %w", cfgErr)
 			}
 			if cfg.Backup.OnQuit && cfg.Backup.Configured() {
-				return runBackup(cmd, store, cfg.Backup)
+				return runBackup(cmd, store, dbPath, cfg.Backup)
 			}
 			return nil
 		},
