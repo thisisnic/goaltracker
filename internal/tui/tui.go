@@ -210,12 +210,12 @@ func (m *model) updateConfirm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
 		g, _ := m.selected()
+		m.mode = modeBrowse
 		if err := m.store.Delete(m.ctx, g.ID); err != nil {
 			m.err = err
-		} else {
-			m.status = fmt.Sprintf("deleted #%d", g.ID)
+			return m, nil
 		}
-		m.mode = modeBrowse
+		m.status = fmt.Sprintf("deleted #%d", g.ID)
 		m.err = m.reload()
 	default:
 		m.mode = modeBrowse
@@ -272,12 +272,14 @@ func (m *model) viewList(w, h int) string {
 	for i := start; i < len(m.rows) && i < start+h; i++ {
 		r := m.rows[i]
 		g := r.Goal
+		// Build the row as plain text first so width and truncation are
+		// measured without escape codes, then style it.
 		mark := "  "
 		switch g.Outcome {
 		case goal.Hit:
-			mark = hitStyle.Render("✓ ")
+			mark = "✓ "
 		case goal.Missed:
-			mark = missedStyle.Render("✗ ")
+			mark = "✗ "
 		}
 		right := ""
 		if g.Kind == goal.Numeric {
@@ -286,8 +288,13 @@ func (m *model) viewList(w, h int) string {
 		indent := strings.Repeat("  ", r.Depth)
 		left := fmt.Sprintf("%s%s%-8s %s", indent, mark, g.Period, g.Statement)
 		line := fit(left, right, w)
-		if i == m.cursor {
+		switch {
+		case i == m.cursor:
 			line = selectedStyle.Render(line)
+		case g.Outcome == goal.Hit:
+			line = strings.Replace(line, "✓", hitStyle.Render("✓"), 1)
+		case g.Outcome == goal.Missed:
+			line = strings.Replace(line, "✗", missedStyle.Render("✗"), 1)
 		}
 		lines = append(lines, line)
 	}

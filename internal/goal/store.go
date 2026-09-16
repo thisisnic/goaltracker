@@ -162,8 +162,11 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Goal, error) {
 	var where []string
 	var args []any
 	if f.Year != "" {
-		where = append(where, "g.period LIKE ?")
-		args = append(args, f.Year+"%")
+		if !yearRe.MatchString(f.Year) {
+			return nil, fmt.Errorf("year %q: want YYYY", f.Year)
+		}
+		where = append(where, "substr(g.period, 1, 4) = ?")
+		args = append(args, f.Year)
 	}
 	if f.Level != "" {
 		where = append(where, "g.level = ?")
@@ -230,11 +233,11 @@ func (s *Store) Update(ctx context.Context, id int64, e Edit) (Goal, error) {
 	if e.ParentID != nil {
 		if *e.ParentID != nil {
 			pid := **e.ParentID
-			if pid == id {
-				return Goal{}, errors.New("a goal cannot be its own parent")
-			}
 			if _, err := s.Get(ctx, pid); err != nil {
 				return Goal{}, fmt.Errorf("parent %d: %w", pid, err)
+			}
+			if err := s.checkNoCycle(ctx, id, pid); err != nil {
+				return Goal{}, err
 			}
 		}
 		g.ParentID = *e.ParentID
@@ -246,6 +249,31 @@ func (s *Store) Update(ctx context.Context, id int64, e Edit) (Goal, error) {
 		return Goal{}, err
 	}
 	return s.Get(ctx, id)
+}
+
+// checkNoCycle walks up from newParent and fails if it reaches id, which
+// would make id an ancestor of itself.
+func (s *Store) checkNoCycle(ctx context.Context, id, newParent int64) error {
+	seen := map[int64]bool{}
+	cur := newParent
+	for {
+		if cur == id {
+			return fmt.Errorf("parent %d would make goal %d an ancestor of itself", newParent, id)
+		}
+		if seen[cur] {
+			return nil // existing loop elsewhere; not ours to fix here
+		}
+		seen[cur] = true
+		var parent sql.NullInt64
+		err := s.db.QueryRowContext(ctx, `SELECT parent_id FROM goals WHERE id = ?`, cur).Scan(&parent)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && !parent.Valid) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		cur = parent.Int64
+	}
 }
 
 // RecordProgress appends a running-total update to a numeric goal.

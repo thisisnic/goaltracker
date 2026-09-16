@@ -177,3 +177,33 @@ func TestUpdateAndDelete(t *testing.T) {
 		t.Errorf("Delete missing = %v want ErrNotFound", err)
 	}
 }
+
+func TestUpdateRejectsCycle(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	a, _ := s.Add(ctx, NewGoal{Statement: "a", Period: "2026"})
+	b, _ := s.Add(ctx, NewGoal{Statement: "b", Period: "2026-Q1", ParentID: &a.ID})
+	c, _ := s.Add(ctx, NewGoal{Statement: "c", Period: "2026-01", ParentID: &b.ID})
+
+	// a -> c would close the loop a -> c -> b -> a.
+	cid := &c.ID
+	if _, err := s.Update(ctx, a.ID, Edit{ParentID: &cid}); err == nil {
+		t.Fatal("cycle accepted, want error")
+	}
+	// Re-parenting a leaf to the root is still fine.
+	aid := &a.ID
+	if _, err := s.Update(ctx, c.ID, Edit{ParentID: &aid}); err != nil {
+		t.Fatalf("legit reparent: %v", err)
+	}
+}
+
+func TestListRejectsBadYear(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	_, _ = s.Add(ctx, NewGoal{Statement: "a", Period: "2026"})
+	for _, y := range []string{"2", "20%", "abcd"} {
+		if _, err := s.List(ctx, Filter{Year: y}); err == nil {
+			t.Errorf("List year %q succeeded, want error", y)
+		}
+	}
+}

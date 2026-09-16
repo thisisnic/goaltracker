@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -65,7 +64,7 @@ otherwise it is a yes/no goal.`,
 			}
 			defer store.Close()
 			in.Statement = args[0]
-			if parent > 0 {
+			if cmd.Flags().Changed("parent") {
 				in.ParentID = &parent
 			}
 			g, err := store.Add(cmd.Context(), in)
@@ -279,8 +278,8 @@ func goalEditCmd(dbPath *string) *cobra.Command {
 func goalProgressCmd(dbPath *string) *cobra.Command {
 	var note string
 	cmd := &cobra.Command{
-		Use:   "progress ID VALUE",
-		Short: "Record the running total of a numeric goal",
+		Use:     "progress ID VALUE",
+		Short:   "Record the running total of a numeric goal",
 		Example: `  lifeo goal progress 1 35000 --note "end of June"`,
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -367,7 +366,7 @@ func goalDeleteCmd(dbPath *string) *cobra.Command {
 			if !yes {
 				fmt.Fprintf(cmd.OutOrStdout(), "delete goal %d %q and its history? [y/N] ", g.ID, g.Statement)
 				var answer string
-				fmt.Fscanln(os.Stdin, &answer)
+				fmt.Fscanln(cmd.InOrStdin(), &answer)
 				if !strings.HasPrefix(strings.ToLower(answer), "y") {
 					fmt.Fprintln(cmd.OutOrStdout(), "kept")
 					return nil

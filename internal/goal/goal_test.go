@@ -84,3 +84,25 @@ func TestTreeAndFlatten(t *testing.T) {
 		}
 	}
 }
+
+func TestTreeShowsLoopedGoals(t *testing.T) {
+	id := func(n int64) *int64 { return &n }
+	goals := []Goal{
+		{ID: 1, Statement: "root"},
+		{ID: 2, ParentID: id(3)},
+		{ID: 3, ParentID: id(2)},
+	}
+	rows := Flatten(Tree(goals))
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows want 3: %+v", len(rows), rows)
+	}
+	seen := map[int64]bool{}
+	for _, r := range rows {
+		seen[r.Goal.ID] = true
+	}
+	for _, want := range []int64{1, 2, 3} {
+		if !seen[want] {
+			t.Errorf("goal %d missing from tree", want)
+		}
+	}
+}

@@ -167,7 +167,8 @@ type Node struct {
 }
 
 // Tree arranges goals into parent/child nodes, preserving input order at each
-// level.
+// level. Goals that would be unreachable from any root, for instance because
+// their parent links form a loop, are appended as roots so nothing is hidden.
 func Tree(goals []Goal) []*Node {
 	byID := make(map[int64]*Node, len(goals))
 	nodes := make([]*Node, 0, len(goals))
@@ -186,14 +187,40 @@ func Tree(goals []Goal) []*Node {
 		}
 		roots = append(roots, n)
 	}
+	visited := map[int64]bool{}
+	var mark func(n *Node)
+	mark = func(n *Node) {
+		if visited[n.Goal.ID] {
+			return
+		}
+		visited[n.Goal.ID] = true
+		for _, c := range n.Children {
+			mark(c)
+		}
+	}
+	for _, r := range roots {
+		mark(r)
+	}
+	for _, n := range nodes {
+		if !visited[n.Goal.ID] {
+			roots = append(roots, n)
+			mark(n)
+		}
+	}
 	return roots
 }
 
-// Flatten walks a tree depth-first, returning each goal with its depth.
+// Flatten walks a tree depth-first, returning each goal with its depth. Each
+// goal appears once even if parent links loop.
 func Flatten(roots []*Node) []Row {
 	var out []Row
+	visited := map[int64]bool{}
 	var walk func(n *Node, depth int)
 	walk = func(n *Node, depth int) {
+		if visited[n.Goal.ID] {
+			return
+		}
+		visited[n.Goal.ID] = true
 		out = append(out, Row{Goal: n.Goal, Depth: depth})
 		for _, c := range n.Children {
 			walk(c, depth+1)
