@@ -158,16 +158,26 @@ func MarkerPath(stateDir, dbPath, dir string) string {
 	return filepath.Join(stateDir, "last-backup-"+h[:12])
 }
 
-// canonical makes a path absolute and follows symlinks where it can, so the
-// same file reached by different spellings shares one marker.
+// canonical makes a path absolute and follows symlinks, so the same file
+// reached by different spellings shares one marker. When the path does not
+// exist yet, the nearest existing parent is resolved and the rest appended,
+// so a marker made before the folder is created matches later ones.
 func canonical(p string) string {
 	if abs, err := filepath.Abs(p); err == nil {
 		p = abs
 	}
-	if real, err := filepath.EvalSymlinks(p); err == nil {
-		p = real
+	p = filepath.Clean(p)
+	var rest []string
+	for dir := p; ; dir = filepath.Dir(dir) {
+		if real, err := filepath.EvalSymlinks(dir); err == nil {
+			parts := append([]string{real}, rest...)
+			return filepath.Join(parts...)
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			return p
+		}
+		rest = append([]string{filepath.Base(dir)}, rest...)
 	}
-	return filepath.Clean(p)
 }
 
 // writeEncrypted encrypts plain to a temporary file beside path and renames
@@ -269,12 +279,14 @@ func Restore(backupFile, identityFile, dbPath string, now time.Time) (kept strin
 	}
 
 	if !exists(dbPath) {
-		// No live database, but stale WAL files would be applied to the
-		// restored one, so they must go.
+		// No live database. A WAL file without one is abnormal: it may hold
+		// commits from a database that a failed restore left elsewhere, and
+		// SQLite would apply it to the restored file. Refuse rather than
+		// delete or pair it.
 		for _, s := range sidecars {
-			if err := os.Remove(dbPath + s); err != nil && !os.IsNotExist(err) {
+			if exists(dbPath + s) {
 				os.Remove(tmp)
-				return "", fmt.Errorf("remove stale %s: %w", dbPath+s, err)
+				return "", fmt.Errorf("%s exists but %s does not; a previous restore may have failed. Put the database back beside it, or move the file away, before restoring", dbPath+s, dbPath)
 			}
 		}
 	} else {

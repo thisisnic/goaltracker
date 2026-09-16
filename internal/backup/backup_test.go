@@ -233,15 +233,21 @@ func TestRestoreKeepsWALWithBak(t *testing.T) {
 		t.Errorf("restore reused %s although its WAL files were still there", kept)
 	}
 
-	// With no live database, stale sidecars are removed, not paired.
+	// With no live database but a WAL beside where it was, restore refuses
+	// rather than deleting or adopting it.
 	os.Remove(e.dbPath)
-	os.WriteFile(e.dbPath+"-wal", []byte("wal"), 0o600)
-	kept3, err := Restore(res.Path, e.keyFile, e.dbPath, now)
-	if err != nil {
+	if err := os.WriteFile(e.dbPath+"-wal", []byte("wal"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if kept3 != "" || exists(e.dbPath+"-wal") {
-		t.Errorf("no-live-db restore: kept=%q wal exists=%v", kept3, exists(e.dbPath+"-wal"))
+	if _, err := Restore(res.Path, e.keyFile, e.dbPath, now); err == nil || !strings.Contains(err.Error(), "previous restore may have failed") {
+		t.Fatalf("restore with orphan WAL: err = %v", err)
+	}
+	if !exists(e.dbPath+"-wal") || exists(e.dbPath) || exists(e.dbPath+".restore-tmp") {
+		t.Error("refused restore changed files on disk")
+	}
+	os.Remove(e.dbPath + "-wal")
+	if _, err := Restore(res.Path, e.keyFile, e.dbPath, now); err != nil {
+		t.Fatalf("restore after clearing the WAL: %v", err)
 	}
 }
 
@@ -429,6 +435,28 @@ func TestMarkerPathDiffersPerDatabaseAndFolder(t *testing.T) {
 		if MarkerPath("/state", alt, root) != MarkerPath("/state", same[0], root) {
 			t.Errorf("%q gets a different marker from %q", alt, same[0])
 		}
+	}
+
+	// A backup folder that does not exist yet, under a symlinked parent,
+	// gets the same marker before and after it is created.
+	realParent := filepath.Join(root, "real")
+	if err := os.Mkdir(realParent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	linkParent := filepath.Join(root, "linkparent")
+	if err := os.Symlink(realParent, linkParent); err != nil {
+		t.Fatal(err)
+	}
+	newDir := filepath.Join(linkParent, "repo")
+	before := MarkerPath("/state", db, newDir)
+	if err := os.Mkdir(newDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if after := MarkerPath("/state", db, newDir); after != before {
+		t.Errorf("marker changed once the folder existed: %s vs %s", before, after)
+	}
+	if MarkerPath("/state", db, filepath.Join(realParent, "repo")) != before {
+		t.Error("symlinked and real spellings of the new folder differ")
 	}
 }
 
