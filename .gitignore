@@ -1,2 +1,5 @@
 # roborev snapshots
 /.roborev/
+
+# build output
+/lifeo

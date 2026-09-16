@@ -1,0 +1,72 @@
+// Package cli defines the lifeo command tree.
+package cli
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/spf13/cobra"
+
+	"github.com/thisisnic/lifeo/internal/goal"
+	"github.com/thisisnic/lifeo/internal/tui"
+)
+
+// DefaultDBPath is where the database lives unless overridden by --db or
+// the LIFEO_DB environment variable: $XDG_DATA_HOME/lifeo/lifeo.db, falling
+// back to ~/.local/share/lifeo/lifeo.db.
+func DefaultDBPath() string {
+	if p := os.Getenv("LIFEO_DB"); p != "" {
+		return p
+	}
+	base := os.Getenv("XDG_DATA_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			home = "."
+		}
+		base = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(base, "lifeo", "lifeo.db")
+}
+
+// New builds the root command.
+func New() *cobra.Command {
+	var dbPath string
+	root := &cobra.Command{
+		Use:   "lifeo",
+		Short: "A personal tracker for goals, plans and time",
+		Long: `lifeo is a local tracker for goals, plans and time.
+
+Run it with no arguments to open the terminal UI. Subcommands give the same
+data a scriptable interface; add --json to any list or show command for
+machine-readable output.`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := goal.Open(dbPath)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			return tui.Run(cmd.Context(), store)
+		},
+	}
+	root.PersistentFlags().StringVar(&dbPath, "db", DefaultDBPath(), "path to the SQLite database (env LIFEO_DB)")
+	root.AddCommand(goalCmd(&dbPath))
+	return root
+}
+
+// Execute runs the root command and exits non-zero on error.
+func Execute() {
+	root := New()
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		fmt.Fprintln(os.Stderr, "lifeo:", err)
+		os.Exit(1)
+	}
+}
+
+func openStore(path *string) (*goal.Store, error) {
+	return goal.Open(*path)
+}
