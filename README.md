@@ -89,9 +89,12 @@ in case you added goals or made a backup with a new key:
 ```sh
 mv ~/.local/share/goaltracker ~/.local/share/goaltracker.new
 mv ~/.config/goaltracker ~/.config/goaltracker.new
+# and if goaltracker already wrote a backup into your backup folder:
+cd <your backup folder> && git mv goaltracker.db.age goaltracker.db.age.new && git commit -m "keep new-key backup"
 ```
 
-Delete those `.new` folders only once you are sure nothing in them matters.
+Check none of those `.new` names exist before you start, and delete them
+only once you are sure nothing in them matters.
 
 ```sh
 mv ~/.config/lifeo ~/.config/goaltracker
