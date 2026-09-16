@@ -42,11 +42,17 @@ func send(m *model, msg tea.Msg, budget *int) {
 		return
 	}
 	if rv := reflect.ValueOf(msg); rv.Kind() == reflect.Slice {
+		// Run the batch concurrently so timer commands that never return
+		// in time cost one wait, not one per command.
+		var cmds []tea.Cmd
 		for i := 0; i < rv.Len() && *budget > 0; i++ {
 			if c, ok := rv.Index(i).Interface().(tea.Cmd); ok && c != nil {
 				*budget--
-				send(m, runCmd(c), budget)
+				cmds = append(cmds, c)
 			}
+		}
+		for _, out := range runCmds(cmds) {
+			send(m, out, budget)
 		}
 		return
 	}
@@ -62,17 +68,32 @@ func deliver(m *model, msg tea.Msg) {
 	send(m, msg, &budget)
 }
 
-// runCmd runs a command but gives up on ones that wait on a timer, such as
-// cursor blinks, so tests stay fast.
+// cmdWait is how long a command gets to return before its message is
+// dropped. Field moves return at once; cursor blinks and other timers do not.
+const cmdWait = 100 * time.Millisecond
+
 func runCmd(c tea.Cmd) tea.Msg {
-	ch := make(chan tea.Msg, 1)
-	go func() { ch <- c() }()
-	select {
-	case msg := <-ch:
-		return msg
-	case <-time.After(100 * time.Millisecond):
-		return nil
+	return runCmds([]tea.Cmd{c})[0]
+}
+
+// runCmds runs commands concurrently and returns their messages in order,
+// with nil for any that did not finish within cmdWait.
+func runCmds(cmds []tea.Cmd) []tea.Msg {
+	out := make([]tea.Msg, len(cmds))
+	chans := make([]chan tea.Msg, len(cmds))
+	for i, c := range cmds {
+		chans[i] = make(chan tea.Msg, 1)
+		go func(c tea.Cmd, ch chan tea.Msg) { ch <- c() }(c, chans[i])
 	}
+	deadline := time.After(cmdWait)
+	for i, ch := range chans {
+		select {
+		case out[i] = <-ch:
+		case <-deadline:
+			return out
+		}
+	}
+	return out
 }
 
 func press(m *model, keys ...string) {
@@ -338,6 +359,32 @@ func TestEditKeepsExactTarget(t *testing.T) {
 		if after.Target != before.Target || after.Kind != goal.Numeric {
 			t.Errorf("#%d target changed by an unrelated edit: %v -> %v (%s)", id, before.Target, after.Target, after.Kind)
 		}
+	}
+}
+
+func TestEscClearsFilterBeforeClosingForm(t *testing.T) {
+	m, _ := setup(t)
+	press(m, "a")
+	typeText(m, "x")
+	press(m, "enter", "enter", "enter", "enter", "enter") // focus lands on Under
+	if m.form.filtering() {
+		t.Fatal("filter open before / was pressed")
+	}
+	press(m, "/")
+	typeText(m, "ear")
+	if !m.form.filtering() {
+		t.Fatal("/ did not open the parent filter")
+	}
+	press(m, "esc")
+	if m.mode != modeForm || m.form == nil {
+		t.Fatal("esc while filtering closed the whole form")
+	}
+	if m.form.filtering() {
+		t.Error("esc did not clear the filter")
+	}
+	press(m, "esc")
+	if m.mode != modeBrowse || m.form != nil || m.status != "cancelled" {
+		t.Errorf("second esc did not cancel: mode=%v status=%q", m.mode, m.status)
 	}
 }
 
