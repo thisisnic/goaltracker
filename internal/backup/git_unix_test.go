@@ -52,7 +52,11 @@ func TestPushGivesUpOnHungRemote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fake ssh never ran: %v", err)
 	}
-	pid, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || pid <= 1 {
+		t.Fatalf("bad fake ssh pid %q: %v", raw, err)
+	}
+	t.Cleanup(func() { syscall.Kill(pid, syscall.SIGKILL) })
 	// Gone means reaped, or a zombie waiting for an init that does not
 	// reap promptly; either way it is no longer running.
 	gone := func() bool {
@@ -75,7 +79,6 @@ func TestPushGivesUpOnHungRemote(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for !gone() {
 		if time.Now().After(deadline) {
-			syscall.Kill(pid, syscall.SIGKILL)
 			t.Fatalf("fake ssh (pid %d) survived the push timeout", pid)
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -166,7 +169,11 @@ func TestCancelKillsChildThatIgnoresTerm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("background child never started: %v", err)
 	}
-	pid, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || pid <= 1 {
+		t.Fatalf("bad child pid %q: %v", raw, err)
+	}
+	t.Cleanup(func() { syscall.Kill(pid, syscall.SIGKILL) })
 	// The child must die from the immediate kill, well inside killGrace.
 	deadline := time.Now().Add(time.Second)
 	for {
@@ -174,7 +181,6 @@ func TestCancelKillsChildThatIgnoresTerm(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			syscall.Kill(pid, syscall.SIGKILL)
 			t.Fatalf("child %d that ignored TERM outlived git", pid)
 		}
 		time.Sleep(20 * time.Millisecond)
