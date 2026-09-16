@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thisisnic/lifeo/internal/config"
-	"github.com/thisisnic/lifeo/internal/goal"
-	"github.com/thisisnic/lifeo/internal/tui"
+	"github.com/thisisnic/goaltracker/internal/config"
+	"github.com/thisisnic/goaltracker/internal/goal"
+	"github.com/thisisnic/goaltracker/internal/tui"
 )
 
 // DefaultDBPath is where the database lives unless overridden by --db or

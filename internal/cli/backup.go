@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thisisnic/lifeo/internal/backup"
-	"github.com/thisisnic/lifeo/internal/config"
-	"github.com/thisisnic/lifeo/internal/goal"
+	"github.com/thisisnic/goaltracker/internal/backup"
+	"github.com/thisisnic/goaltracker/internal/config"
+	"github.com/thisisnic/goaltracker/internal/goal"
 )
 
 func keyCmd() *cobra.Command {

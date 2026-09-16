@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnic/lifeo/internal/goal"
+	"github.com/thisisnic/goaltracker/internal/goal"
 )
 
 // gitRepos makes a bare "remote" and a clone of it at dir, with an
@@ -232,9 +232,13 @@ func TestPushCancelledContextIsNotSuccess(t *testing.T) {
 	e.run(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := Push(ctx, e.opts.Dir, now); !errors.Is(err, ErrPushFailed) || strings.Contains(err.Error(), "not a git repository") {
+	// Nothing was committed, so this must not look like a push failure,
+	// which the CLI would report as "committed locally".
+	err := Push(ctx, e.opts.Dir, now)
+	if !errors.Is(err, context.Canceled) || errors.Is(err, ErrPushFailed) || strings.Contains(err.Error(), "not a git repository") {
 		t.Errorf("Push with a cancelled context: %v", err)
 	}
+	// After a commit, the network step is what fails.
 	if err := push(ctx, e.opts.Dir); !errors.Is(err, ErrPushFailed) {
 		t.Errorf("push with a cancelled context: %v", err)
 	}

@@ -9,7 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
-	"github.com/thisisnic/lifeo/internal/goal"
+	"github.com/thisisnic/goaltracker/internal/goal"
 )
 
 // goalForm collects the fields for adding or editing a goal.

@@ -1,4 +1,4 @@
-module github.com/thisisnic/lifeo
+module github.com/thisisnic/goaltracker
 
 go 1.26.4
 

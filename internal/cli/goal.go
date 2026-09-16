@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thisisnic/lifeo/internal/goal"
+	"github.com/thisisnic/goaltracker/internal/goal"
 )
 
 func goalCmd(dbPath *string) *cobra.Command {

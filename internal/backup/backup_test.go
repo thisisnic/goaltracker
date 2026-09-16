@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thisisnic/lifeo/internal/goal"
+	"github.com/thisisnic/goaltracker/internal/goal"
 )
 
 var now = time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thisisnic/lifeo/internal/goal"
+	"github.com/thisisnic/goaltracker/internal/goal"
 )
 
 type runner struct {

@@ -22,7 +22,7 @@ import (
 
 	"filippo.io/age"
 
-	"github.com/thisisnic/lifeo/internal/goal"
+	"github.com/thisisnic/goaltracker/internal/goal"
 )
 
 // FileName is the encrypted backup's name inside the backup folder.

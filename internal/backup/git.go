@@ -18,13 +18,21 @@ import (
 // caller can treat that as a warning: the backup is safe on disk and the
 // next push will carry it.
 func Push(ctx context.Context, dir string, now time.Time) error {
+	// Before anything is committed, a cancelled context is just that: not
+	// a push failure, which would wrongly claim a commit was made.
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("backup git cancelled: %w", err)
+	}
 	if out, err := git(ctx, dir, "rev-parse", "--is-inside-work-tree"); err != nil || strings.TrimSpace(out) != "true" {
-		if ctx.Err() != nil {
-			return pushError(ctx, err)
+		if cerr := ctx.Err(); cerr != nil {
+			return fmt.Errorf("backup git cancelled: %w", cerr)
 		}
 		return fmt.Errorf("%s is not a git repository; run git init there or set git = false", dir)
 	}
 	if _, err := git(ctx, dir, "add", "--", FileName); err != nil {
+		if cerr := ctx.Err(); cerr != nil {
+			return fmt.Errorf("backup git cancelled: %w", cerr)
+		}
 		return err
 	}
 	// Anything staged?
@@ -34,6 +42,9 @@ func Push(ctx context.Context, dir string, now time.Time) error {
 	}
 	msg := "lifeo backup " + now.UTC().Format("2006-01-02 15:04 UTC")
 	if _, err := git(ctx, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", msg, "--", FileName); err != nil {
+		if cerr := ctx.Err(); cerr != nil {
+			return fmt.Errorf("backup git cancelled: %w", cerr)
+		}
 		return err
 	}
 	return push(ctx, dir)

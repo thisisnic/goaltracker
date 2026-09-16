@@ -12,7 +12,7 @@ optional. More parts, such as tasks and time planning, are on the way.
 ## Install
 
 ```sh
-go install github.com/thisisnic/lifeo/cmd/lifeo@latest
+go install github.com/thisisnic/goaltracker/cmd/lifeo@latest
 ```
 
 Or from a checkout: `make build` puts `./lifeo` in the repo.
