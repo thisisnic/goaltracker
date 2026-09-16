@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -265,5 +266,31 @@ func TestVersion(t *testing.T) {
 	}
 	if out := r.run("", false, "--version"); !strings.HasPrefix(out, "goaltracker ") {
 		t.Errorf("--version output: %q", out)
+	}
+}
+
+func TestDefaultPathOwnsItsDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix file modes")
+	}
+	data := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("GOALTRACKER_DB", "")
+	dir := filepath.Join(data, "goaltracker")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := New()
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"goal", "list"}) // default --db
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o700 {
+		t.Errorf("default data dir left at %o", info.Mode().Perm())
 	}
 }

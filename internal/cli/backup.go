@@ -81,7 +81,7 @@ the config file unless given here.`,
 			if !cfg.Backup.Configured() {
 				return fmt.Errorf("no backup folder or key configured; run `goaltracker key new` and follow its instructions, or pass --dir and --recipient")
 			}
-			store, err := goal.Open(*dbPath)
+			store, err := openStore(dbPath)
 			if err != nil {
 				return err
 			}

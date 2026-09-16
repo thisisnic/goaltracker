@@ -43,11 +43,28 @@ CREATE TABLE IF NOT EXISTS progress (
 CREATE INDEX IF NOT EXISTS progress_goal ON progress(goal_id, recorded_at);
 `
 
+// Option adjusts Open.
+type Option func(*openOptions)
+
+type openOptions struct {
+	ownDir bool
+}
+
+// OwnDir says the database's directory belongs to the tool, as the default
+// data directory does, so Open may make it owner-only even if it already
+// existed. Without it, a pre-existing directory is treated as the user's
+// and its mode is left alone.
+func OwnDir() Option { return func(o *openOptions) { o.ownDir = true } }
+
 // Open opens or creates the database at path, creating parent directories.
-// The directory and file are owner-only: the database holds the why,
-// amounts and notes in plaintext, and SQLite reuses the file's mode for the
-// -wal and -shm files it keeps beside it.
-func Open(path string) (*Store, error) {
+// The file is owner-only: the database holds the why, amounts and notes in
+// plaintext, and SQLite reuses the file's mode for the -wal and -shm files
+// it keeps beside it. A directory Open creates is owner-only too.
+func Open(path string, opts ...Option) (*Store, error) {
+	var o openOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	dir := filepath.Dir(path)
 	created := false
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -63,7 +80,7 @@ func Open(path string) (*Store, error) {
 	if err := f.Close(); err != nil {
 		return nil, fmt.Errorf("open database file: %w", err)
 	}
-	if err := restrict(dir, path, created); err != nil {
+	if err := restrict(dir, path, created || o.ownDir); err != nil {
 		return nil, err
 	}
 	db, err := sql.Open("sqlite", path)
@@ -90,15 +107,15 @@ func Open(path string) (*Store, error) {
 
 // restrict tightens modes left loose by earlier versions. The database and
 // its WAL files are always made 0600. The directory is only touched when
-// this call created it or it is the tool's own data directory, never a
-// directory the user chose such as their home or /tmp. Windows does not
-// use these modes, so it is skipped.
-func restrict(dir, path string, createdDir bool) error {
+// ownDir says so: this call created it, or the caller vouched for it with
+// OwnDir. A directory the user chose, such as their home or /tmp, is left
+// alone. Windows does not use these modes, so it is skipped.
+func restrict(dir, path string, ownDir bool) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
 	targets := map[string]os.FileMode{path: 0o600, path + "-wal": 0o600, path + "-shm": 0o600}
-	if createdDir || filepath.Base(dir) == "goaltracker" {
+	if ownDir {
 		targets[dir] = 0o700
 	}
 	for p, mode := range targets {

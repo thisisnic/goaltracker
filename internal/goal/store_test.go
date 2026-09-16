@@ -223,39 +223,44 @@ func TestListRejectsBadYear(t *testing.T) {
 	}
 }
 
+// modeOf is a test helper that fails clearly when a path is missing.
+func modeOf(t *testing.T, p string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatalf("stat %s: %v", p, err)
+	}
+	return info.Mode().Perm()
+}
+
 func TestOpenIsOwnerOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix file modes")
 	}
-	dir := filepath.Join(t.TempDir(), "goaltracker")
-	path := filepath.Join(dir, "goaltracker.db")
+	// A directory Open creates is owner-only, whatever it is called.
+	dir := filepath.Join(t.TempDir(), "anything")
+	path := filepath.Join(dir, "goals.db")
 	s, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer s.Close()
 	// Force the WAL and shm files into existence.
 	if _, err := s.Add(context.Background(), NewGoal{Statement: "x", Period: "2026"}); err != nil {
 		t.Fatal(err)
 	}
-	mode := func(p string) os.FileMode {
-		t.Helper()
-		info, err := os.Stat(p)
-		if err != nil {
-			t.Fatalf("stat %s: %v", p, err)
-		}
-		return info.Mode().Perm()
-	}
-	if m := mode(dir); m != 0o700 {
-		t.Errorf("data dir mode = %o want 700", m)
+	if m := modeOf(t, dir); m != 0o700 {
+		t.Errorf("created dir mode = %o want 700", m)
 	}
 	for _, suffix := range []string{"", "-wal", "-shm"} {
-		if m := mode(path + suffix); m != 0o600 {
+		if m := modeOf(t, path+suffix); m != 0o600 {
 			t.Errorf("%s mode = %o want 600", path+suffix, m)
 		}
 	}
 
-	// Files left loose by an earlier version are tightened on open.
-	// Keep the store open so the WAL and shm files stay on disk.
+	// Loosened files are tightened on reopen; a pre-existing directory
+	// not vouched for is left alone. The first store stays open so the
+	// WAL and shm files remain on disk.
 	for p, loose := range map[string]os.FileMode{path: 0o644, path + "-wal": 0o644, path + "-shm": 0o644, dir: 0o755} {
 		if err := os.Chmod(p, loose); err != nil {
 			t.Fatal(err)
@@ -270,39 +275,46 @@ func TestOpenIsOwnerOnly(t *testing.T) {
 		t.Errorf("reopened database lost data: %d goals", len(got))
 	}
 	for _, suffix := range []string{"", "-wal", "-shm"} {
-		if m := mode(path + suffix); m != 0o600 {
+		if m := modeOf(t, path+suffix); m != 0o600 {
 			t.Errorf("loose %s not tightened: %o", path+suffix, m)
 		}
 	}
-	if m := mode(dir); m != 0o700 {
-		t.Errorf("loose data dir not tightened: %o", m)
+	if m := modeOf(t, dir); m != 0o755 {
+		t.Errorf("pre-existing dir changed to %o without OwnDir", m)
 	}
-	s.Close()
+
+	// With OwnDir the directory is tightened too.
+	s3, err := Open(path, OwnDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s3.Close()
+	if m := modeOf(t, dir); m != 0o700 {
+		t.Errorf("owned dir not tightened: %o", m)
+	}
 }
 
 func TestOpenLeavesUserDirectoryAlone(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix file modes")
 	}
-	// A directory the user chose, which already exists and is not the
-	// tool's own data directory, must keep its mode.
-	dir := filepath.Join(t.TempDir(), "Documents")
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	s, err := Open(filepath.Join(dir, "goals.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	info, err := os.Stat(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o755 {
-		t.Errorf("user directory mode changed to %o", info.Mode().Perm())
-	}
-	if info, _ := os.Stat(filepath.Join(dir, "goals.db")); info.Mode().Perm() != 0o600 {
-		t.Errorf("database in user directory mode = %o want 600", info.Mode().Perm())
+	// A pre-existing directory the user chose keeps its mode, even one
+	// that happens to be called goaltracker, such as a source checkout.
+	for _, name := range []string{"Documents", "goaltracker"} {
+		dir := filepath.Join(t.TempDir(), name)
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		s, err := Open(filepath.Join(dir, "goals.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m := modeOf(t, dir); m != 0o755 {
+			t.Errorf("%s: user directory mode changed to %o", name, m)
+		}
+		if m := modeOf(t, filepath.Join(dir, "goals.db")); m != 0o600 {
+			t.Errorf("%s: database mode = %o want 600", name, m)
+		}
+		s.Close()
 	}
 }

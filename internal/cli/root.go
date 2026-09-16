@@ -61,7 +61,7 @@ TUI writes one every time it exits.`,
 			// The config only affects backups, so a broken one must not
 			// keep the UI from opening. It is reported on exit instead.
 			cfg, cfgErr := config.Load(cfgPath)
-			store, err := goal.Open(dbPath)
+			store, err := openDB(dbPath)
 			if err != nil {
 				return err
 			}
@@ -84,6 +84,15 @@ TUI writes one every time it exits.`,
 	root.SetVersionTemplate("goaltracker {{.Version}}\n")
 	root.AddCommand(goalCmd(&dbPath), keyCmd(), backupCmd(&dbPath, &cfgPath), restoreCmd(&dbPath, &cfgPath), versionCmd())
 	return root
+}
+
+// openDB opens the database, vouching for its directory only when it is
+// the tool's own default location.
+func openDB(path string) (*goal.Store, error) {
+	if path == DefaultDBPath() {
+		return goal.Open(path, goal.OwnDir())
+	}
+	return goal.Open(path)
 }
 
 // Execute runs the root command and exits non-zero on error.
@@ -113,7 +122,7 @@ func envFailClosed(name string) bool {
 }
 
 func openStore(path *string) (*goal.Store, error) {
-	return goal.Open(*path)
+	return openDB(*path)
 }
 
 func versionCmd() *cobra.Command {
