@@ -166,14 +166,15 @@ func TestDeleteConfirmation(t *testing.T) {
 	}
 }
 
-func TestEnvBool(t *testing.T) {
+func TestEnvFailClosed(t *testing.T) {
 	for val, want := range map[string]bool{
 		"": false, "0": false, "false": false, "no": false, "off": false, " No ": false,
 		"1": true, "true": true, "TRUE": true, "yes": true, "on": true, "y": true,
 		"sure": true, // anything unrecognised fails closed
+		"  ":   true, // set, even if only spaces
 	} {
 		t.Setenv("LIFEO_PRIVATE", val)
-		if got := envBool("LIFEO_PRIVATE"); got != want {
+		if got := envFailClosed("LIFEO_PRIVATE"); got != want {
 			t.Errorf("LIFEO_PRIVATE=%q -> %v want %v", val, got, want)
 		}
 	}

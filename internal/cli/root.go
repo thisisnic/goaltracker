@@ -60,7 +60,7 @@ Press x in the UI to toggle it.`,
 		},
 	}
 	root.PersistentFlags().StringVar(&dbPath, "db", DefaultDBPath(), "path to the SQLite database (env LIFEO_DB)")
-	root.Flags().BoolVar(&private, "private", envBool("LIFEO_PRIVATE"), "start with the why, amounts and notes hidden; x toggles (env LIFEO_PRIVATE=1)")
+	root.Flags().BoolVar(&private, "private", envFailClosed("LIFEO_PRIVATE"), "start with the why, amounts and notes hidden; x toggles (env LIFEO_PRIVATE=1)")
 	root.AddCommand(goalCmd(&dbPath))
 	return root
 }
@@ -74,13 +74,18 @@ func Execute() {
 	}
 }
 
-// envBool reads a boolean environment variable. It fails closed: any value
-// that is set counts as true unless it is an explicit off value such as 0,
-// false, no or off, so a typo never silently turns private mode off.
-func envBool(name string) bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
-	switch v {
-	case "", "0", "f", "false", "n", "no", "off":
+// envFailClosed reads an on/off environment variable for a privacy setting.
+// It fails closed: an unset or empty variable is off, an explicit off value
+// (0, false, no, off, case-insensitive) is off, and anything else that is
+// set, even a typo or just spaces, is on. Do not reuse it for settings where
+// a typo turning them on would be harmful.
+func envFailClosed(name string) bool {
+	raw, set := os.LookupEnv(name)
+	if !set || raw == "" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "0", "f", "false", "n", "no", "off":
 		return false
 	}
 	return true
