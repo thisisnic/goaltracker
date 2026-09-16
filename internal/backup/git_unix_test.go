@@ -138,3 +138,46 @@ func TestPushExpiringAfterCommitIsPushFailure(t *testing.T) {
 		t.Error("the landed commit was not pushed on retry")
 	}
 }
+
+func TestCancelKillsChildThatIgnoresTerm(t *testing.T) {
+	e := newEnv(t)
+	gitRepos(t, e.opts.Dir)
+	e.run(t)
+	// A pre-commit hook that starts a background child which ignores
+	// TERM, keeps git's pipes closed, records its PID and sleeps, then
+	// the hook itself sleeps so the deadline cancels git mid-commit.
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+	hook := filepath.Join(e.opts.Dir, ".git", "hooks", "pre-commit")
+	script := "#!/bin/sh\n" +
+		"( trap '' TERM; echo $$ > " + pidFile + "; sleep 60 ) >/dev/null 2>&1 </dev/null &\n" +
+		"sleep 5\n"
+	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if err := Push(ctx, e.opts.Dir, now); err == nil {
+		t.Fatal("cancelled push succeeded")
+	}
+	raw, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("background child never started: %v", err)
+	}
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
+	// The child must die from the immediate kill, well inside killGrace.
+	deadline := time.Now().Add(time.Second)
+	for {
+		if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
+			break
+		}
+		if time.Now().After(deadline) {
+			syscall.Kill(pid, syscall.SIGKILL)
+			t.Fatalf("child %d that ignored TERM outlived git", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if took := time.Since(start); took > killGrace {
+		t.Errorf("child died only after %s, so the delayed kill did it, not the immediate one", took)
+	}
+}

@@ -43,9 +43,12 @@ func detach(cmd *exec.Cmd) (done func()) {
 	}
 	return func() {
 		if escalate != nil && escalate.Stop() {
-			// Git has exited but the grace period had not run out. Any
-			// member still alive keeps the group id reserved, so this
-			// cannot hit anyone else; if none is, it is a no-op.
+			// Git has exited but the grace period had not run out. While
+			// any member is still alive the group id stays reserved. Only
+			// if every member has already gone, and another git call has
+			// started a new session in the same instant, could the id have
+			// been reused; Push is not run concurrently, so that race is
+			// accepted.
 			syscall.Kill(pgid, syscall.SIGKILL)
 		}
 	}
