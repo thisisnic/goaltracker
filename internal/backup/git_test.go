@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/thisisnic/lifeo/internal/goal"
 )
@@ -187,5 +188,53 @@ func TestPushNeedsRepo(t *testing.T) {
 	e.run(t)
 	if err := Push(context.Background(), e.opts.Dir, now); err == nil || !strings.Contains(err.Error(), "not a git repository") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestPushGivesUpOnHungRemote(t *testing.T) {
+	e := newEnv(t)
+	gitRepos(t, e.opts.Dir)
+	e.run(t)
+	// A "remote" over ssh where ssh is a script that sleeps forever, with
+	// the timeout shortened so the test is quick.
+	fake := filepath.Join(t.TempDir(), "ssh")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nsleep 60\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_SSH_COMMAND", fake)
+	if out, err := exec.Command("git", "-C", e.opts.Dir, "remote", "set-url", "origin", "git@example.invalid:nobody/nothing.git").CombinedOutput(); err != nil {
+		t.Fatalf("set-url: %v\n%s", err, out)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	start := time.Now()
+	err := Push(ctx, e.opts.Dir, now)
+	if !errors.Is(err, ErrPushFailed) {
+		t.Fatalf("err = %v, want ErrPushFailed", err)
+	}
+	if took := time.Since(start); took > 15*time.Second {
+		t.Errorf("push took %s; the hung ssh was not cut off", took)
+	}
+}
+
+func TestPushErrorHints(t *testing.T) {
+	cases := map[string]string{
+		"! [rejected] main -> main (non-fast-forward)":                        "git pull",
+		"Updates were rejected because the remote contains work; fetch first": "git pull",
+		"! [remote rejected] main -> main (pre-receive hook declined)":        "",
+		"fatal: 'origin' does not appear to be a git repository":              "no origin remote",
+	}
+	for msg, hint := range cases {
+		err := pushError(errors.New(msg))
+		if !errors.Is(err, ErrPushFailed) {
+			t.Errorf("%q: not ErrPushFailed", msg)
+		}
+		if hint == "" {
+			if strings.Contains(err.Error(), "git pull") || strings.Contains(err.Error(), "no origin") {
+				t.Errorf("%q: got a hint that does not apply: %v", msg, err)
+			}
+		} else if !strings.Contains(err.Error(), hint) {
+			t.Errorf("%q: want hint %q, got %v", msg, hint, err)
+		}
 	}
 }

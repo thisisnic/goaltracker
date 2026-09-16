@@ -43,9 +43,14 @@ var ErrPushFailed = errors.New("push failed")
 // TUI from exiting for long.
 const pushTimeout = 60 * time.Second
 
-func push(ctx context.Context, dir string) error {
+func push(ctx context.Context, dir string) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, pushTimeout)
 	defer cancel()
+	defer func() {
+		if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			err = fmt.Errorf("%w: gave up after %s: %v", ErrPushFailed, pushTimeout, err)
+		}
+	}()
 	if _, err := git(ctx, dir, "rev-parse", "--verify", "-q", "HEAD"); err != nil {
 		return nil // nothing committed yet, nothing to push
 	}
@@ -76,25 +81,26 @@ func push(ctx context.Context, dir string) error {
 func pushError(err error) error {
 	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "non-fast-forward") || strings.Contains(msg, "fetch first") || strings.Contains(msg, "rejected"):
+	case strings.Contains(msg, "non-fast-forward") || strings.Contains(msg, "fetch first"):
 		return fmt.Errorf("%w: the remote has newer commits, perhaps a backup from another machine; run git pull in the backup folder and pick which lifeo.db.age to keep: %v", ErrPushFailed, err)
 	case strings.Contains(msg, "does not appear to be a git repository") || strings.Contains(msg, "No such remote") || strings.Contains(msg, "'origin' does not appear"):
 		return fmt.Errorf("%w: the backup folder has no origin remote: %v", ErrPushFailed, err)
-	case strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "killed"):
-		return fmt.Errorf("%w: gave up after %s: %v", ErrPushFailed, pushTimeout, err)
 	}
 	return fmt.Errorf("%w: %v", ErrPushFailed, err)
 }
 
-// git runs a git command in dir with no terminal prompts, from git itself
-// or from ssh, so a backup on quit can never sit waiting for input.
+// git runs a git command in dir with no way to prompt: git's own prompts
+// are off, ssh's askpass is off, and on Unix the process runs detached from
+// the terminal in its own session so ssh cannot open /dev/tty. The user's
+// own ssh configuration is left alone. If the context ends, the whole
+// process group is killed and Run gives up waiting on any child that still
+// holds the output pipes.
 func git(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	if os.Getenv("GIT_SSH_COMMAND") == "" {
-		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
-	}
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "SSH_ASKPASS_REQUIRE=never")
+	cmd.WaitDelay = 5 * time.Second
+	detach(cmd)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
