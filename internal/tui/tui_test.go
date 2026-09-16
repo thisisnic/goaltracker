@@ -463,6 +463,85 @@ func TestProgressInputVisibleWithLongWhy(t *testing.T) {
 	}
 }
 
+func TestClipHelpers(t *testing.T) {
+	sec := []string{"", "label", "l1", "l2", "l3", "l4"}
+	for n, want := range map[int]int{0: 0, 1: 0, 2: 0, 3: 3, 4: 4, 6: 6, 9: 6} {
+		if got := len(clipTail(sec, n)); got != want {
+			t.Errorf("clipTail n=%d kept %d lines want %d", n, got, want)
+		}
+		if got := len(clipHead(sec, n)); got != want {
+			t.Errorf("clipHead n=%d kept %d lines want %d", n, got, want)
+		}
+	}
+	if got := clipHead(sec, 4); got[len(got)-1] != "l4" || !strings.Contains(got[2], "3 earlier") {
+		t.Errorf("clipHead keeps the wrong lines: %q", got)
+	}
+	if got := clipTail(sec, 3); !strings.Contains(got[2], "…") || got[1] != "label" {
+		t.Errorf("clipTail keeps the wrong lines: %q", got)
+	}
+}
+
+func TestLongStatementKeepsInputVisible(t *testing.T) {
+	m, store := setup(t)
+	ctx := context.Background()
+	long := strings.Repeat("a very long goal statement ", 12)
+	if _, err := store.Update(ctx, 1, goal.Edit{Statement: &long}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	deliver(m, tea.WindowSizeMsg{Width: 60, Height: 12})
+	press(m, "p")
+	view := m.View().Content
+	if h := lipgloss.Height(view); h > 12 {
+		t.Errorf("view is %d lines tall for a 12-line terminal", h)
+	}
+	for _, want := range []string{"new total:", "progress"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestNarrowDeletePromptStaysOnScreen(t *testing.T) {
+	m, store := setup(t)
+	ctx := context.Background()
+	long := strings.Repeat("a very long goal statement ", 6)
+	if _, err := store.Update(ctx, 1, goal.Edit{Statement: &long}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	deliver(m, tea.WindowSizeMsg{Width: 50, Height: 16})
+	press(m, "d")
+	view := m.View().Content
+	if h := lipgloss.Height(view); h > 16 {
+		t.Errorf("view is %d lines tall for a 16-line terminal", h)
+	}
+	if w := lipgloss.Width(view); w > 50 {
+		t.Errorf("view is %d wide for a 50-column terminal", w)
+	}
+	if !strings.Contains(view, "y/N") {
+		t.Error("delete prompt not shown")
+	}
+	press(m, "n")
+}
+
+func TestFormOpensAtRightSizeOnNarrowTerminal(t *testing.T) {
+	m, _ := setup(t)
+	deliver(m, tea.WindowSizeMsg{Width: 50, Height: 30})
+	press(m, "a")
+	view := m.View().Content
+	if h := lipgloss.Height(view); h > 30 {
+		t.Errorf("form view is %d lines tall for a 30-line terminal", h)
+	}
+	if !strings.Contains(view, "esc cancel") {
+		t.Error("form help line not shown")
+	}
+}
+
 func TestFormResizes(t *testing.T) {
 	m, _ := setup(t)
 	press(m, "a")

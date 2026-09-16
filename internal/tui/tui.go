@@ -142,9 +142,9 @@ func (m *model) openForm(existing *goal.Goal) tea.Cmd {
 	if existing != nil {
 		id = existing.ID
 	}
+	m.mode = modeForm // before formSize, which measures the form's help line
 	w, h := m.formSize()
 	m.form = newGoalForm(existing, parentCandidates(m.rows, id), time.Now().Format("2006"), w, h)
-	m.mode = modeForm
 	return m.form.Init()
 }
 
@@ -332,7 +332,7 @@ func (m *model) View() tea.View {
 	b.WriteString(titleStyle.Render("lifeo · goals"))
 	b.WriteString("\n")
 	if m.mode == modeForm && m.form != nil {
-		b.WriteString(paneStyle.Width(m.width).Height(bodyH).Render(m.form.View()))
+		b.WriteString(paneStyle.Width(m.width).Height(bodyH).Render(clipLines(m.form.View(), bodyH-2)))
 	} else {
 		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, right))
 	}
@@ -421,12 +421,12 @@ func (m *model) viewDetail(w, h int) string {
 	wrap := lipgloss.NewStyle().Width(w)
 	cut := func(line string) string { return ansi.Truncate(line, w, "…") }
 
-	var head []string
-	head = append(head, strings.Split(wrap.Bold(true).Render(g.Statement), "\n")...)
-	head = append(head, cut(fmt.Sprintf("%s %s (%s)   %s #%d", labelStyle.Render("period"), g.Period, g.Level, labelStyle.Render("id"), g.ID)))
+	var meta []string
+	meta = append(meta, cut(fmt.Sprintf("%s %s (%s)   %s #%d", labelStyle.Render("period"), g.Period, g.Level, labelStyle.Render("id"), g.ID)))
 	if g.ParentID != nil {
-		head = append(head, cut(fmt.Sprintf("%s #%d", labelStyle.Render("under "), *g.ParentID)))
+		meta = append(meta, cut(fmt.Sprintf("%s #%d", labelStyle.Render("under "), *g.ParentID)))
 	}
+	statement := strings.Split(wrap.Bold(true).Render(g.Statement), "\n")
 
 	var prog []string
 	prog = append(prog, "")
@@ -448,6 +448,14 @@ func (m *model) viewDetail(w, h int) string {
 	if m.mode == modeProgress {
 		input = append(input, "", cut(m.input.View()))
 	}
+
+	// A long statement gives way to the progress line and input rather
+	// than pushing them out of the pane.
+	stmtMax := h - len(meta) - len(prog) - len(input)
+	if len(statement) > stmtMax {
+		statement = clipPlain(statement, max(1, stmtMax))
+	}
+	head := append(statement, meta...)
 
 	// Space left for why and history after the fixed parts.
 	free := h - len(head) - len(prog) - len(input)
@@ -486,11 +494,29 @@ func (m *model) viewDetail(w, h int) string {
 	all = append(all, prog...)
 	all = append(all, hist...)
 	all = append(all, input...)
+	if len(all) > h {
+		// Very short pane: lose the spacer lines, then the top, so the
+		// progress line and input are the last things to go.
+		all = dropBlank(all)
+	}
+	if len(all) > h {
+		all = all[len(all)-max(0, h):]
+	}
 	return strings.Join(all, "\n")
 }
 
-// clipTail keeps the first n lines, marking the cut on the last one.
-func clipTail(lines []string, n int) []string {
+func dropBlank(lines []string) []string {
+	out := lines[:0:0]
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// clipPlain keeps the first n lines, marking the cut on the last one.
+func clipPlain(lines []string, n int) []string {
 	if len(lines) <= n {
 		return lines
 	}
@@ -500,6 +526,19 @@ func clipTail(lines []string, n int) []string {
 	out := append([]string{}, lines[:n]...)
 	out[n-1] = dimStyle.Render("…")
 	return out
+}
+
+// clipTail keeps the first n lines of a labelled section, marking the cut
+// on the last one. Fewer than three lines (spacer, label, one line) is not
+// worth showing, so the section is dropped.
+func clipTail(lines []string, n int) []string {
+	if len(lines) <= n {
+		return lines
+	}
+	if n < 3 {
+		return nil
+	}
+	return clipPlain(lines, n)
 }
 
 // clipHead keeps a heading line plus the last n-2 entries, with a marker
