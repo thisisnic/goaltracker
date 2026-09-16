@@ -221,6 +221,9 @@ func TestKeyBackupRestore(t *testing.T) {
 		t.Fatalf("backup output: %q", out)
 	}
 	snapshot := strings.TrimSpace(strings.TrimPrefix(out, "backup: wrote "))
+	if snapshot != filepath.Join(dir, "lifeo.db.age") {
+		t.Errorf("backup went to %q", snapshot)
+	}
 	if out := r.run("", false, "--config", cfgPath, "backup"); !strings.Contains(out, "no changes") {
 		t.Errorf("second backup: %q", out)
 	}
@@ -233,8 +236,9 @@ func TestKeyBackupRestore(t *testing.T) {
 	if out := r.run("n\n", false, "--config", cfgPath, "restore", snapshot); !strings.Contains(out, "kept") {
 		t.Errorf("declined restore: %q", out)
 	}
-	out = r.run("", false, "--config", cfgPath, "restore", snapshot, "-y")
-	if !strings.Contains(out, "restored") || !strings.Contains(out, ".bak") {
+	// No FILE argument: restore from the configured folder.
+	out = r.run("", false, "--config", cfgPath, "restore", "-y")
+	if !strings.Contains(out, "restored") || !strings.Contains(out, snapshot) || !strings.Contains(out, ".bak") {
 		t.Errorf("restore output: %q", out)
 	}
 	if out := r.run("", false, "goal", "list"); !strings.Contains(out, "keep this") {
@@ -243,5 +247,9 @@ func TestKeyBackupRestore(t *testing.T) {
 	// Restore without any key configured or given fails clearly.
 	if msg := r.run("", true, "--config", filepath.Join(root, "none.toml"), "restore", snapshot, "-y"); !strings.Contains(msg, "no private key") {
 		t.Errorf("restore without key: %q", msg)
+	}
+	// A key but no folder and no FILE also fails clearly.
+	if msg := r.run("", true, "--config", filepath.Join(root, "none.toml"), "restore", "--identity", keyFile, "-y"); !strings.Contains(msg, "no backup file") {
+		t.Errorf("restore without file: %q", msg)
 	}
 }

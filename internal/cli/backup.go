@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -60,10 +61,11 @@ func backupCmd(dbPath, cfgPath *string) *cobra.Command {
 	var dir, recipient string
 	cmd := &cobra.Command{
 		Use:   "backup",
-		Short: "Write an encrypted snapshot of the database",
-		Long: `Write a consistent, encrypted snapshot of the database into the backup
-folder. Nothing is written if the database is unchanged since the last
-snapshot. The folder and key come from the config file unless given here.`,
+		Short: "Write an encrypted copy of the database to the backup folder",
+		Long: `Write a consistent, encrypted copy of the database as lifeo.db.age in the
+backup folder, replacing the previous one. Nothing is written if the
+database is unchanged since the last backup. The folder and key come from
+the config file unless given here.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load(*cfgPath)
@@ -94,12 +96,12 @@ snapshot. The folder and key come from the config file unless given here.`,
 
 // runBackup takes a snapshot and reports what happened on stdout.
 func runBackup(cmd *cobra.Command, store *goal.Store, b config.Backup) error {
-	res, err := backup.Run(cmd.Context(), store, b.Dir, b.Recipient, time.Now())
+	res, err := backup.Run(cmd.Context(), store, b.Dir, b.Recipient)
 	if err != nil {
 		return fmt.Errorf("backup: %w", err)
 	}
 	if res.Skipped {
-		fmt.Fprintln(cmd.OutOrStdout(), "backup: no changes since the last snapshot")
+		fmt.Fprintln(cmd.OutOrStdout(), "backup: no changes since the last backup")
 		return nil
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "backup: wrote %s\n", res.Path)
@@ -110,12 +112,13 @@ func restoreCmd(dbPath, cfgPath *string) *cobra.Command {
 	var identity string
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "restore SNAPSHOT",
-		Short: "Replace the database with a decrypted snapshot",
-		Long: `Decrypt a snapshot with your private key and put it in place of the current
-database. The current database is kept next to it as lifeo.db.bak. Close any
+		Use:   "restore [FILE]",
+		Short: "Replace the database with a decrypted backup",
+		Long: `Decrypt a backup with your private key and put it in place of the current
+database. With no FILE, the lifeo.db.age in the configured backup folder is
+used. The current database is kept next to it as lifeo.db.bak. Close any
 running lifeo first.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load(*cfgPath)
 			if err != nil {
@@ -127,8 +130,17 @@ running lifeo first.`,
 			if identity == "" {
 				return fmt.Errorf("no private key: set identity_file in %s or pass --identity", *cfgPath)
 			}
+			var file string
+			switch {
+			case len(args) == 1:
+				file = args[0]
+			case cfg.Backup.Dir != "":
+				file = filepath.Join(cfg.Backup.Dir, backup.FileName)
+			default:
+				return fmt.Errorf("no backup file given and no backup folder in %s", *cfgPath)
+			}
 			if !yes {
-				fmt.Fprintf(cmd.OutOrStdout(), "replace %s with %s? The current database is kept as .bak [y/N] ", *dbPath, args[0])
+				fmt.Fprintf(cmd.OutOrStdout(), "replace %s with %s? The current database is kept as .bak [y/N] ", *dbPath, file)
 				var answer string
 				fmt.Fscanln(cmd.InOrStdin(), &answer)
 				if answer != "y" && answer != "Y" && answer != "yes" {
@@ -136,13 +148,13 @@ running lifeo first.`,
 					return nil
 				}
 			}
-			bak, err := backup.Restore(args[0], config.ExpandHome(identity), *dbPath)
+			kept, err := backup.Restore(file, config.ExpandHome(identity), *dbPath, time.Now())
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "restored %s\n", *dbPath)
-			if bak != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "previous database kept at %s\n", bak)
+			fmt.Fprintf(cmd.OutOrStdout(), "restored %s from %s\n", *dbPath, file)
+			if kept != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "previous database kept at %s\n", kept)
 			}
 			return nil
 		},

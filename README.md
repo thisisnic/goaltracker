@@ -44,8 +44,10 @@ that matters.
 
 ## Backups
 
-Backups are encrypted snapshots of the database written to a folder you
-choose, typically a private git repo of your own. Set up once:
+A backup is an encrypted copy of the database, written as one file,
+`lifeo.db.age`, into a folder you choose, typically a private git repo of
+your own. Each backup replaces the last; the repo's history is the history.
+Set up once:
 
 ```sh
 lifeo key new
@@ -59,18 +61,18 @@ public key with a config file to copy into `~/.config/lifeo/config.toml`:
 dir = "~/lifeo-data"          # your private data repo
 recipient = "age1..."         # public key, encrypts
 identity_file = "~/.config/lifeo/key.txt"  # private key, decrypts
-on_quit = true                # snapshot every time the UI exits
+on_quit = true                # back up every time the UI exits
 ```
 
 Keep a copy of the private key in a password manager. Without it the
 backups cannot be opened. Then:
 
 ```sh
-lifeo backup                  # write a snapshot now (skipped if unchanged)
-lifeo restore ~/lifeo-data/lifeo-20260916-120000.db.age
+lifeo backup                  # back up now (skipped if unchanged)
+lifeo restore                 # put the backup in place of the database
 ```
 
-Commit and push the data repo however you like. Snapshots are small.
+Commit and push the data repo however you like. The file is small.
 
 ## Development
 

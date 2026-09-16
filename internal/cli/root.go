@@ -56,10 +56,9 @@ TUI writes one every time it exits.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.Load(cfgPath)
-			if err != nil {
-				return err
-			}
+			// The config only affects backups, so a broken one must not
+			// keep the UI from opening. It is reported on exit instead.
+			cfg, cfgErr := config.Load(cfgPath)
 			store, err := goal.Open(dbPath)
 			if err != nil {
 				return err
@@ -67,6 +66,9 @@ TUI writes one every time it exits.`,
 			defer store.Close()
 			if err := tui.Run(cmd.Context(), store, tui.Options{Private: private}); err != nil {
 				return err
+			}
+			if cfgErr != nil {
+				return fmt.Errorf("no backup on quit: %w", cfgErr)
 			}
 			if cfg.Backup.OnQuit && cfg.Backup.Configured() {
 				return runBackup(cmd, store, cfg.Backup)
