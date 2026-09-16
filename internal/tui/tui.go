@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -31,6 +32,7 @@ const (
 	modeBrowse mode = iota
 	modeProgress
 	modeConfirmDelete
+	modeForm
 )
 
 type model struct {
@@ -44,6 +46,7 @@ type model struct {
 	height int
 
 	mode   mode
+	form   *goalForm
 	input  textinput.Model
 	status string
 	err    error
@@ -105,9 +108,60 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateProgress(msg)
 		case modeConfirmDelete:
 			return m.updateConfirm(msg)
+		case modeForm:
+			return m.updateForm(msg)
 		}
 		return m.updateBrowse(msg)
 	}
+	if m.mode == modeForm {
+		return m.updateForm(msg)
+	}
+	return m, nil
+}
+
+func (m *model) openForm(existing *goal.Goal) tea.Cmd {
+	var id int64
+	if existing != nil {
+		id = existing.ID
+	}
+	m.form = newGoalForm(existing, parentCandidates(m.rows, id), time.Now().Format("2006"))
+	m.mode = modeForm
+	return m.form.Init()
+}
+
+func (m *model) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if k, ok := msg.(tea.KeyPressMsg); ok && k.String() == "esc" {
+		m.mode = modeBrowse
+		m.form = nil
+		m.status = "cancelled"
+		return m, nil
+	}
+	done, submitted, cmd := m.form.Update(msg)
+	if !done {
+		return m, cmd
+	}
+	m.mode = modeBrowse
+	if !submitted {
+		m.status = "cancelled"
+		m.form = nil
+		return m, nil
+	}
+	g, err := m.form.apply(m)
+	if err != nil {
+		m.err = err
+		m.form = nil
+		return m, nil
+	}
+	m.form = nil
+	m.err = m.reload()
+	for i, r := range m.rows {
+		if r.Goal.ID == g.ID {
+			m.cursor = i
+			break
+		}
+	}
+	m.err = m.loadHistory()
+	m.status = fmt.Sprintf("saved #%d", g.ID)
 	return m, nil
 }
 
@@ -156,6 +210,12 @@ func (m *model) updateBrowse(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "d":
 		if _, ok := m.selected(); ok {
 			m.mode = modeConfirmDelete
+		}
+	case "a":
+		return m, m.openForm(nil)
+	case "e":
+		if g, ok := m.selected(); ok {
+			return m, m.openForm(&g)
 		}
 	}
 	return m, nil
@@ -249,6 +309,14 @@ func (m *model) View() tea.View {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("lifeo · goals"))
 	b.WriteString("\n")
+	if m.mode == modeForm && m.form != nil {
+		b.WriteString(paneStyle.Width(m.width).Height(bodyH).Render(m.form.View()))
+		b.WriteString("\n")
+		b.WriteString(m.viewStatus())
+		v := tea.NewView(b.String())
+		v.AltScreen = true
+		return v
+	}
 	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, right))
 	b.WriteString("\n")
 	b.WriteString(m.viewStatus())
@@ -379,5 +447,5 @@ func (m *model) viewStatus() string {
 }
 
 func (m *model) helpLine() string {
-	return "j/k move · p progress · h hit · m missed · c clear · d delete · r reload · q quit"
+	return "a add · e edit · p progress · h hit · m missed · c clear · d delete · j/k move · q quit"
 }

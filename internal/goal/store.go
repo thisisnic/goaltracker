@@ -196,6 +196,7 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Goal, error) {
 type Edit struct {
 	Statement *string
 	Why       *string
+	Period    *string
 	Target    *float64
 	Unit      *string
 	ParentID  **int64 // outer nil = no change; inner nil = clear parent
@@ -216,6 +217,13 @@ func (s *Store) Update(ctx context.Context, id int64, e Edit) (Goal, error) {
 	}
 	if e.Why != nil {
 		g.Why = strings.TrimSpace(*e.Why)
+	}
+	if e.Period != nil {
+		period, level, err := ParsePeriod(*e.Period)
+		if err != nil {
+			return Goal{}, err
+		}
+		g.Period, g.Level = period, level
 	}
 	if e.Target != nil {
 		if *e.Target < 0 {
@@ -243,8 +251,8 @@ func (s *Store) Update(ctx context.Context, id int64, e Edit) (Goal, error) {
 		g.ParentID = *e.ParentID
 	}
 	_, err = s.db.ExecContext(ctx, `
-		UPDATE goals SET statement = ?, why = ?, kind = ?, target = ?, unit = ?, parent_id = ? WHERE id = ?`,
-		g.Statement, g.Why, string(g.Kind), g.Target, g.Unit, g.ParentID, id)
+		UPDATE goals SET statement = ?, why = ?, level = ?, period = ?, kind = ?, target = ?, unit = ?, parent_id = ? WHERE id = ?`,
+		g.Statement, g.Why, string(g.Level), g.Period, string(g.Kind), g.Target, g.Unit, g.ParentID, id)
 	if err != nil {
 		return Goal{}, err
 	}

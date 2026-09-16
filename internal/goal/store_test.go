@@ -144,6 +144,19 @@ func TestUpdateAndDelete(t *testing.T) {
 		t.Errorf("after update: %+v", got)
 	}
 
+	period := "2026-q2"
+	got, err = s.Update(ctx, q.ID, Edit{Period: &period})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Period != "2026-Q2" || got.Level != Quarter {
+		t.Errorf("period not updated: %+v", got)
+	}
+	bad := "2026-Q9"
+	if _, err := s.Update(ctx, q.ID, Edit{Period: &bad}); err == nil {
+		t.Error("bad period accepted")
+	}
+
 	var none *int64
 	got, err = s.Update(ctx, q.ID, Edit{ParentID: &none})
 	if err != nil {

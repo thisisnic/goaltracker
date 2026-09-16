@@ -3,8 +3,10 @@ package tui
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -30,6 +32,49 @@ func setup(t *testing.T) (*model, *goal.Store) {
 	return m, store
 }
 
+// send delivers msg to the model and then runs any command it returns,
+// feeding the resulting messages back in, as the Bubble Tea runtime would.
+// Batch and sequence messages are slices of commands and are unpacked. A
+// budget caps how many commands run per delivery, since cursor blinks
+// return batches that would otherwise fan out forever.
+func send(m *model, msg tea.Msg, budget *int) {
+	if msg == nil || *budget <= 0 {
+		return
+	}
+	if rv := reflect.ValueOf(msg); rv.Kind() == reflect.Slice {
+		for i := 0; i < rv.Len() && *budget > 0; i++ {
+			if c, ok := rv.Index(i).Interface().(tea.Cmd); ok && c != nil {
+				*budget--
+				send(m, runCmd(c), budget)
+			}
+		}
+		return
+	}
+	_, cmd := m.Update(msg)
+	if cmd != nil && *budget > 0 {
+		*budget--
+		send(m, runCmd(cmd), budget)
+	}
+}
+
+func deliver(m *model, msg tea.Msg) {
+	budget := 16
+	send(m, msg, &budget)
+}
+
+// runCmd runs a command but gives up on ones that wait on a timer, such as
+// cursor blinks, so tests stay fast.
+func runCmd(c tea.Cmd) tea.Msg {
+	ch := make(chan tea.Msg, 1)
+	go func() { ch <- c() }()
+	select {
+	case msg := <-ch:
+		return msg
+	case <-time.After(5 * time.Millisecond):
+		return nil
+	}
+}
+
 func press(m *model, keys ...string) {
 	for _, k := range keys {
 		var msg tea.KeyPressMsg
@@ -42,7 +87,7 @@ func press(m *model, keys ...string) {
 			r := []rune(k)[0]
 			msg = tea.KeyPressMsg{Code: r, Text: k}
 		}
-		m.Update(msg)
+		deliver(m, msg)
 	}
 }
 
@@ -177,5 +222,118 @@ func TestMarkAndDeleteFlow(t *testing.T) {
 	}
 	if !strings.Contains(m.View().Content, "no goals yet") {
 		t.Error("empty state not shown")
+	}
+}
+
+// typeText sends each rune of s as a key press.
+func typeText(m *model, s string) {
+	for _, r := range s {
+		deliver(m, tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+}
+
+func TestAddViaForm(t *testing.T) {
+	m, store := setup(t)
+	press(m, "a")
+	if m.mode != modeForm || m.form == nil {
+		t.Fatalf("a did not open the form: mode=%v", m.mode)
+	}
+	typeText(m, "write the book")
+	press(m, "enter") // goal -> period (prefilled with this year)
+	press(m, "enter") // period -> why
+	typeText(m, "because")
+	press(m, "enter") // why -> target
+	typeText(m, "12,000")
+	press(m, "enter") // target -> unit
+	typeText(m, "£")
+	press(m, "enter") // unit -> under
+	press(m, "enter") // submit
+	if m.mode != modeBrowse {
+		t.Fatalf("form did not close: mode=%v err=%v", m.mode, m.err)
+	}
+	if m.err != nil {
+		t.Fatal(m.err)
+	}
+	goals, _ := store.List(context.Background(), goal.Filter{})
+	if len(goals) != 3 {
+		t.Fatalf("got %d goals want 3", len(goals))
+	}
+	var g goal.Goal
+	for _, c := range goals {
+		if c.Statement == "write the book" {
+			g = c
+		}
+	}
+	if g.ID == 0 || g.Why != "because" || g.Target != 12000 || g.Unit != "£" || g.Level != goal.Year {
+		t.Errorf("saved goal: %+v", g)
+	}
+	if sel, _ := m.selected(); sel.ID != g.ID {
+		t.Errorf("cursor not on the new goal: %d", sel.ID)
+	}
+}
+
+func TestFormValidationBlocksSubmit(t *testing.T) {
+	m, store := setup(t)
+	press(m, "a")
+	press(m, "enter") // empty statement must not advance
+	typeText(m, "x")
+	press(m, "enter")
+	typeText(m, "-bad") // period becomes 2026-bad
+	press(m, "enter", "enter", "enter", "enter", "enter")
+	if m.mode != modeForm {
+		t.Fatalf("form submitted with a bad period (err=%v)", m.err)
+	}
+	press(m, "esc")
+	if m.mode != modeBrowse || m.form != nil {
+		t.Errorf("esc did not cancel: mode=%v", m.mode)
+	}
+	goals, _ := store.List(context.Background(), goal.Filter{})
+	if len(goals) != 2 {
+		t.Errorf("cancelled form saved a goal: %d goals", len(goals))
+	}
+}
+
+func TestEditViaForm(t *testing.T) {
+	m, store := setup(t)
+	press(m, "j", "e")
+	if m.form == nil || m.form.editID != 2 || m.form.statement != "finish the garden" || m.form.period != "2026-Q3" || m.form.parent != 1 {
+		t.Fatalf("edit form not prefilled: %+v", m.form)
+	}
+	typeText(m, " in september")
+	press(m, "enter", "enter", "enter", "enter", "enter", "enter")
+	if m.mode != modeBrowse || m.err != nil {
+		t.Fatalf("edit did not save: mode=%v err=%v", m.mode, m.err)
+	}
+	g, _ := store.Get(context.Background(), 2)
+	if g.Statement != "finish the garden in september" || g.ParentID == nil || *g.ParentID != 1 {
+		t.Errorf("after edit: %+v", g)
+	}
+}
+
+func TestParentCandidates(t *testing.T) {
+	id := func(n int64) *int64 { return &n }
+	rows := goal.Flatten(goal.Tree([]goal.Goal{
+		{ID: 1},
+		{ID: 2, ParentID: id(1)},
+		{ID: 3, ParentID: id(2)},
+		{ID: 4, ParentID: id(1)},
+		{ID: 5},
+	}))
+	got := parentCandidates(rows, 2)
+	var ids []int64
+	for _, r := range got {
+		ids = append(ids, r.Goal.ID)
+	}
+	want := []int64{1, 4, 5}
+	if len(ids) != len(want) {
+		t.Fatalf("candidates = %v want %v", ids, want)
+	}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("candidates = %v want %v", ids, want)
+		}
+	}
+	if len(parentCandidates(rows, 0)) != 5 {
+		t.Error("add should offer every goal")
 	}
 }
