@@ -148,8 +148,10 @@ func TestCancelKillsChildThatIgnoresTerm(t *testing.T) {
 	// the hook itself sleeps so the deadline cancels git mid-commit.
 	pidFile := filepath.Join(t.TempDir(), "child.pid")
 	hook := filepath.Join(e.opts.Dir, ".git", "hooks", "pre-commit")
+	// exec makes the recorded PID the very process that ignores TERM; an
+	// ignored signal disposition survives exec.
 	script := "#!/bin/sh\n" +
-		"( trap '' TERM; echo $$ > " + pidFile + "; sleep 60 ) >/dev/null 2>&1 </dev/null &\n" +
+		"sh -c 'trap \"\" TERM; echo $$ > " + pidFile + "; exec sleep 60' >/dev/null 2>&1 </dev/null &\n" +
 		"sleep 5\n"
 	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
