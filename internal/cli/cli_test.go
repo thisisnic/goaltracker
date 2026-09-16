@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -167,6 +168,11 @@ func TestDeleteConfirmation(t *testing.T) {
 }
 
 func TestEnvFailClosed(t *testing.T) {
+	t.Setenv("LIFEO_PRIVATE", "") // so the test restores it afterwards
+	os.Unsetenv("LIFEO_PRIVATE")
+	if envFailClosed("LIFEO_PRIVATE") {
+		t.Error("unset variable turned private mode on")
+	}
 	for val, want := range map[string]bool{
 		"": false, "0": false, "false": false, "no": false, "off": false, " No ": false,
 		"1": true, "true": true, "TRUE": true, "yes": true, "on": true, "y": true,
