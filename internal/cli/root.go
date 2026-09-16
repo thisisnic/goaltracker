@@ -88,7 +88,7 @@ TUI writes one every time it exits.`,
 	root.PersistentFlags().StringVar(&cfgPath, "config", config.Path(), "path to the config file")
 	root.Flags().BoolVar(&private, "private", envFailClosed("GOALTRACKER_PRIVATE"), "start with the why, amounts and notes hidden; x toggles (env GOALTRACKER_PRIVATE=1)")
 	root.SetVersionTemplate("goaltracker {{.Version}}\n")
-	root.AddCommand(goalCmd(&dbPath), keyCmd(), backupCmd(&dbPath, &cfgPath), restoreCmd(&dbPath, &cfgPath), versionCmd())
+	root.AddCommand(goalCmd(&dbPath), keyCmd(), backupCmd(&dbPath, &cfgPath), restoreCmd(&dbPath, &cfgPath), versionCmd(), updateCmd())
 	return root
 }
 

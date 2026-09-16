@@ -20,7 +20,9 @@ go install github.com/thisisnic/goaltracker/cmd/goaltracker@latest
 ```
 
 Or from a checkout: `make build` puts `./goaltracker` in the repo.
-`goaltracker version` shows what you have.
+`goaltracker version` shows what you have, and `goaltracker update` fetches
+the latest release, checks it against the published checksums, and
+replaces the binary in place. `goaltracker update --check` only looks.
 
 ## Use
 
