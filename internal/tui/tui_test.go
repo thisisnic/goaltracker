@@ -510,9 +510,25 @@ func TestPrivateModeHidesSensitiveText(t *testing.T) {
 		t.Error("status line leaked the new amount in private mode")
 	}
 
+	// Editing would show the why and target, so it is refused while private.
+	press(m, "e")
+	if m.mode != modeBrowse || m.form != nil {
+		t.Fatal("edit form opened in private mode")
+	}
+	if !strings.Contains(m.status, "press x") {
+		t.Errorf("no hint about leaving private mode: %q", m.status)
+	}
+	if strings.Contains(ansi.Strip(m.View().Content), "for good reasons") {
+		t.Error("why leaked after refused edit")
+	}
+
 	press(m, "x")
 	if m.private || !strings.Contains(ansi.Strip(m.View().Content), "for good reasons") {
 		t.Error("x did not turn private mode off")
+	}
+	press(m, "e")
+	if m.mode != modeForm {
+		t.Error("edit still refused after leaving private mode")
 	}
 }
 

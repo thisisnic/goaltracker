@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -59,7 +60,7 @@ Press x in the UI to toggle it.`,
 		},
 	}
 	root.PersistentFlags().StringVar(&dbPath, "db", DefaultDBPath(), "path to the SQLite database (env LIFEO_DB)")
-	root.Flags().BoolVar(&private, "private", os.Getenv("LIFEO_PRIVATE") != "", "start with the why, amounts and notes hidden; x toggles (env LIFEO_PRIVATE)")
+	root.Flags().BoolVar(&private, "private", envBool("LIFEO_PRIVATE"), "start with the why, amounts and notes hidden; x toggles (env LIFEO_PRIVATE=1)")
 	root.AddCommand(goalCmd(&dbPath))
 	return root
 }
@@ -71,6 +72,13 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, "lifeo:", err)
 		os.Exit(1)
 	}
+}
+
+// envBool reads a boolean environment variable. Empty or unparseable
+// values count as false, so LIFEO_PRIVATE=0 does what it says.
+func envBool(name string) bool {
+	v, err := strconv.ParseBool(os.Getenv(name))
+	return err == nil && v
 }
 
 func openStore(path *string) (*goal.Store, error) {

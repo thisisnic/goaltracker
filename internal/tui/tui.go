@@ -251,6 +251,10 @@ func (m *model) updateBrowse(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "a":
 		return m, m.openForm(nil)
 	case "e":
+		if m.private {
+			m.status = "editing shows the why and target: press x to leave private mode first"
+			return m, nil
+		}
 		if g, ok := m.selected(); ok {
 			return m, m.openForm(&g)
 		}

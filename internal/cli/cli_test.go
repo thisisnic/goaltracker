@@ -165,3 +165,12 @@ func TestDeleteConfirmation(t *testing.T) {
 		t.Errorf("goal still present after delete: %s", got)
 	}
 }
+
+func TestEnvBool(t *testing.T) {
+	for val, want := range map[string]bool{"": false, "0": false, "false": false, "no": false, "1": true, "true": true, "TRUE": true} {
+		t.Setenv("LIFEO_PRIVATE", val)
+		if got := envBool("LIFEO_PRIVATE"); got != want {
+			t.Errorf("LIFEO_PRIVATE=%q -> %v want %v", val, got, want)
+		}
+	}
+}
