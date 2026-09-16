@@ -122,9 +122,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// bodyHeight is the height of the main panes: everything but the title,
-// status and help lines.
-func (m *model) bodyHeight() int { return max(5, m.height-3) }
+// footer renders the status and help lines wrapped to the terminal width.
+func (m *model) footer() string {
+	wrap := lipgloss.NewStyle().Width(max(10, m.width))
+	return wrap.Render(m.viewStatus()) + "\n" + wrap.Render(dimStyle.Render(m.helpLine()))
+}
+
+// bodyHeight is the height of the main panes: everything but the title and
+// the footer, which can wrap on narrow terminals.
+func (m *model) bodyHeight() int {
+	return max(5, m.height-1-lipgloss.Height(m.footer()))
+}
 
 // formSize is the content area inside the form's pane.
 func (m *model) formSize() (int, int) { return m.width - 4, m.bodyHeight() - 2 }
@@ -318,24 +326,18 @@ func (m *model) View() tea.View {
 	// paneStyle's Width and Height include its border and padding, so the
 	// content area is 4 narrower (border 2 + padding 2) and 2 shorter.
 	left := paneStyle.Width(listW).Height(bodyH).Render(m.viewList(listW-4, bodyH-2))
-	right := paneStyle.Width(detailW).Height(bodyH).Render(clipLines(m.viewDetail(detailW-4), bodyH-2))
+	right := paneStyle.Width(detailW).Height(bodyH).Render(clipLines(m.viewDetail(detailW-4, bodyH-2), bodyH-2))
 
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("lifeo · goals"))
 	b.WriteString("\n")
 	if m.mode == modeForm && m.form != nil {
 		b.WriteString(paneStyle.Width(m.width).Height(bodyH).Render(m.form.View()))
-		b.WriteString("\n")
-		b.WriteString(m.viewStatus())
-		v := tea.NewView(b.String())
-		v.AltScreen = true
-		return v
+	} else {
+		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, right))
 	}
-	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, right))
 	b.WriteString("\n")
-	b.WriteString(m.viewStatus())
-	b.WriteString("\n")
-	b.WriteString(dimStyle.Render(m.helpLine()))
+	b.WriteString(m.footer())
 
 	v := tea.NewView(b.String())
 	v.AltScreen = true
@@ -407,49 +409,113 @@ func fit(left, right string, w int) string {
 	return left + strings.Repeat(" ", pad) + right
 }
 
-func (m *model) viewDetail(w int) string {
+// viewDetail renders the selected goal into a w by h area. The header,
+// progress, outcome and (in progress mode) the input are always shown; the
+// why and history share the remaining lines, with history keeping its most
+// recent entries.
+func (m *model) viewDetail(w, h int) string {
 	g, ok := m.selected()
 	if !ok {
 		return ""
 	}
 	wrap := lipgloss.NewStyle().Width(w)
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n", wrap.Bold(true).Render(g.Statement))
-	fmt.Fprintf(&b, "%s %s (%s)   %s #%d\n", labelStyle.Render("period"), g.Period, g.Level, labelStyle.Render("id"), g.ID)
+	cut := func(line string) string { return ansi.Truncate(line, w, "…") }
+
+	var head []string
+	head = append(head, strings.Split(wrap.Bold(true).Render(g.Statement), "\n")...)
+	head = append(head, cut(fmt.Sprintf("%s %s (%s)   %s #%d", labelStyle.Render("period"), g.Period, g.Level, labelStyle.Render("id"), g.ID)))
 	if g.ParentID != nil {
-		fmt.Fprintf(&b, "%s #%d\n", labelStyle.Render("under "), *g.ParentID)
+		head = append(head, cut(fmt.Sprintf("%s #%d", labelStyle.Render("under "), *g.ParentID)))
 	}
-	if g.Why != "" {
-		fmt.Fprintf(&b, "\n%s\n%s\n", labelStyle.Render("why"), wrap.Render(g.Why))
-	}
-	b.WriteString("\n")
+
+	var prog []string
+	prog = append(prog, "")
 	switch g.Kind {
 	case goal.Numeric:
-		fmt.Fprintf(&b, "%s %s / %s\n%s\n", labelStyle.Render("progress"),
-			g.Amount(g.Current), g.Amount(g.Target), bar(g.Percent(), w))
+		prog = append(prog, cut(fmt.Sprintf("%s %s / %s", labelStyle.Render("progress"), g.Amount(g.Current), g.Amount(g.Target))))
+		prog = append(prog, bar(g.Percent(), w))
 	default:
-		fmt.Fprintf(&b, "%s yes/no\n", labelStyle.Render("progress"))
+		prog = append(prog, labelStyle.Render("progress")+" yes/no")
 	}
 	switch g.Outcome {
 	case goal.Hit:
-		fmt.Fprintf(&b, "%s %s\n", labelStyle.Render("outcome "), hitStyle.Render("hit"))
+		prog = append(prog, labelStyle.Render("outcome ")+" "+hitStyle.Render("hit"))
 	case goal.Missed:
-		fmt.Fprintf(&b, "%s %s\n", labelStyle.Render("outcome "), missedStyle.Render("missed"))
+		prog = append(prog, labelStyle.Render("outcome ")+" "+missedStyle.Render("missed"))
 	}
-	if len(m.hist) > 0 {
-		fmt.Fprintf(&b, "\n%s\n", labelStyle.Render("history"))
+
+	var input []string
+	if m.mode == modeProgress {
+		input = append(input, "", cut(m.input.View()))
+	}
+
+	// Space left for why and history after the fixed parts.
+	free := h - len(head) - len(prog) - len(input)
+
+	var why []string
+	if g.Why != "" && free > 0 {
+		lines := strings.Split(wrap.Render(g.Why), "\n")
+		why = append(why, "", labelStyle.Render("why"))
+		why = append(why, lines...)
+	}
+	var hist []string
+	if len(m.hist) > 0 && free > 0 {
+		hist = append(hist, "", labelStyle.Render("history"))
 		for _, p := range m.hist {
 			line := fmt.Sprintf("  %s  %s", p.RecordedAt.Local().Format("2006-01-02"), g.Amount(p.Value))
 			if p.Note != "" {
 				line += "  " + dimStyle.Render(p.Note)
 			}
-			b.WriteString(line + "\n")
+			hist = append(hist, cut(line))
 		}
 	}
-	if m.mode == modeProgress {
-		fmt.Fprintf(&b, "\n%s\n", m.input.View())
+	// History keeps at least its heading and last two entries when there
+	// is a why competing for space; the why gets the rest, then history
+	// takes whatever the why leaves.
+	histMin := min(len(hist), 4)
+	if len(why) > free-histMin {
+		why = clipTail(why, max(0, free-histMin))
 	}
-	return b.String()
+	if len(hist) > free-len(why) {
+		hist = clipHead(hist, max(0, free-len(why)))
+	}
+
+	var all []string
+	all = append(all, head...)
+	all = append(all, why...)
+	all = append(all, prog...)
+	all = append(all, hist...)
+	all = append(all, input...)
+	return strings.Join(all, "\n")
+}
+
+// clipTail keeps the first n lines, marking the cut on the last one.
+func clipTail(lines []string, n int) []string {
+	if len(lines) <= n {
+		return lines
+	}
+	if n < 1 {
+		return nil
+	}
+	out := append([]string{}, lines[:n]...)
+	out[n-1] = dimStyle.Render("…")
+	return out
+}
+
+// clipHead keeps a heading line plus the last n-2 entries, with a marker
+// saying how many earlier entries were dropped.
+func clipHead(lines []string, n int) []string {
+	if len(lines) <= n {
+		return lines
+	}
+	if n < 3 {
+		return nil
+	}
+	// lines[0] is a blank spacer, lines[1] the heading.
+	keep := n - 3
+	dropped := len(lines) - 2 - keep
+	out := []string{lines[0], lines[1], dimStyle.Render(fmt.Sprintf("  … %d earlier", dropped))}
+	return append(out, lines[len(lines)-keep:]...)
 }
 
 func bar(pct float64, w int) string {
@@ -474,5 +540,8 @@ func (m *model) viewStatus() string {
 }
 
 func (m *model) helpLine() string {
+	if m.mode == modeForm {
+		return "enter next · shift+tab back · esc cancel"
+	}
 	return "a add · e edit · p progress · h hit · m missed · c clear · d delete · j/k move · q quit"
 }

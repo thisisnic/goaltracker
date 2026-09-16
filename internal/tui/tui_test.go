@@ -432,6 +432,37 @@ func TestLongWhyDoesNotPushHelpOffScreen(t *testing.T) {
 	}
 }
 
+func TestProgressInputVisibleWithLongWhy(t *testing.T) {
+	m, store := setup(t)
+	ctx := context.Background()
+	why := strings.Repeat("a long reason that wraps across many lines of the pane. ", 40)
+	if _, err := store.Update(ctx, 1, goal.Edit{Why: &why}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 12; i++ {
+		if _, err := store.RecordProgress(ctx, 1, float64(i*1000), "a note that is quite long and would wrap in a narrow pane"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	deliver(m, tea.WindowSizeMsg{Width: 70, Height: 22})
+	press(m, "p")
+	view := m.View().Content
+	if h := lipgloss.Height(view); h > 22 {
+		t.Errorf("view is %d lines tall for a 22-line terminal", h)
+	}
+	for _, want := range []string{"new total:", "progress", "history", "earlier", "q quit"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view missing %q:\n%s", want, view)
+		}
+	}
+	if w := lipgloss.Width(view); w > 70 {
+		t.Errorf("view is %d wide for a 70-column terminal", w)
+	}
+}
+
 func TestFormResizes(t *testing.T) {
 	m, _ := setup(t)
 	press(m, "a")
