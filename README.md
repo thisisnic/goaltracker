@@ -81,15 +81,23 @@ time. Without it, commit and push the data repo however you like.
 ## Upgrading from lifeo
 
 The command used to be called `lifeo`. Nothing moves your data across on
-its own, so if you had it installed, do this once with no goaltracker
-running:
+its own. Do this once, with neither lifeo nor goaltracker running, and
+before goaltracker has created anything of its own. If you have already
+run `goaltracker` or `goaltracker key new`, remove what it made first:
+`~/.local/share/goaltracker` and `~/.config/goaltracker` are safe to delete
+at that point, as they hold only an empty database or a key you have not
+used.
 
 ```sh
 mv ~/.config/lifeo ~/.config/goaltracker
 rm -f ~/.config/goaltracker/last-backup-*
 sed -i 's|/.config/lifeo/|/.config/goaltracker/|' ~/.config/goaltracker/config.toml
 mkdir -p ~/.local/share/goaltracker
-mv ~/.local/share/lifeo/lifeo.db ~/.local/share/goaltracker/goaltracker.db
+# the database and, if lifeo last exited uncleanly, its -wal and -shm files
+for f in ~/.local/share/lifeo/lifeo.db*; do
+  mv "$f" ~/.local/share/goaltracker/goaltracker.db"${f#*/lifeo.db}"
+done
+rmdir ~/.local/share/lifeo
 cd <your backup folder> && git mv lifeo.db.age goaltracker.db.age && git commit -m "rename" && git push
 ```
 
