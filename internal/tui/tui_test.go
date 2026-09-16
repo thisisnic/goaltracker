@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/thisisnic/lifeo/internal/goal"
 )
@@ -497,8 +498,8 @@ func TestLongStatementKeepsInputVisible(t *testing.T) {
 	if h := lipgloss.Height(view); h > 12 {
 		t.Errorf("view is %d lines tall for a 12-line terminal", h)
 	}
-	for _, want := range []string{"new total:", "progress"} {
-		if !strings.Contains(view, want) {
+	for _, want := range []string{"new total:", "progress £0 / £70,000"} {
+		if !strings.Contains(ansi.Strip(view), want) {
 			t.Errorf("view missing %q:\n%s", want, view)
 		}
 	}
@@ -533,12 +534,19 @@ func TestFormOpensAtRightSizeOnNarrowTerminal(t *testing.T) {
 	m, _ := setup(t)
 	deliver(m, tea.WindowSizeMsg{Width: 50, Height: 30})
 	press(m, "a")
-	view := m.View().Content
-	if h := lipgloss.Height(view); h > 30 {
-		t.Errorf("form view is %d lines tall for a 30-line terminal", h)
+	// The browse help line wraps at this width but the form's does not, so
+	// the form must be sized with the form's footer, i.e. after the mode
+	// switch. Sending the size again yields the same numbers.
+	wantW, wantH := m.formSize()
+	if m.form.width != wantW || m.form.height != wantH {
+		t.Errorf("form opened at %dx%d, want %dx%d", m.form.width, m.form.height, wantW, wantH)
 	}
-	if !strings.Contains(view, "esc cancel") {
-		t.Error("form help line not shown")
+	deliver(m, tea.WindowSizeMsg{Width: 50, Height: 30})
+	if m.form.width != wantW || m.form.height != wantH {
+		t.Errorf("form resized to %dx%d on an unchanged window, want %dx%d", m.form.width, m.form.height, wantW, wantH)
+	}
+	if h := lipgloss.Height(m.View().Content); h > 30 {
+		t.Errorf("form view is %d lines tall for a 30-line terminal", h)
 	}
 }
 

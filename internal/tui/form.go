@@ -16,6 +16,8 @@ import (
 type goalForm struct {
 	form   *huh.Form
 	editID int64 // 0 when adding
+	width  int
+	height int
 
 	statement string
 	period    string
@@ -88,7 +90,8 @@ func newGoalForm(existing *goal.Goal, candidates []goal.Row, defaultPeriod strin
 
 // resize fits the form to the space the TUI gives it.
 func (f *goalForm) resize(width, height int) {
-	f.form = f.form.WithWidth(max(20, width)).WithHeight(max(10, height))
+	f.width, f.height = max(20, width), max(10, height)
+	f.form = f.form.WithWidth(f.width).WithHeight(f.height)
 }
 
 // filtering reports whether the focused field is a select with its filter
