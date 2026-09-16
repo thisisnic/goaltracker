@@ -81,3 +81,30 @@ func TestPushGivesUpOnHungRemote(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+func TestPushExpiringDuringCommitIsCancellation(t *testing.T) {
+	e := newEnv(t)
+	gitRepos(t, e.opts.Dir)
+	e.run(t)
+	// A pre-commit hook that outlives the context, so the deadline hits
+	// during git commit rather than before it.
+	hook := filepath.Join(e.opts.Dir, ".git", "hooks", "pre-commit")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nsleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	err := Push(ctx, e.opts.Dir, now)
+	if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrPushFailed) {
+		t.Errorf("Push expiring during commit: %v", err)
+	}
+	// Nothing was committed, so the file is still staged.
+	if out, err := exec.Command("git", "-C", e.opts.Dir, "diff", "--cached", "--name-only").Output(); err != nil || !strings.Contains(string(out), FileName) {
+		t.Errorf("staged files after the cancelled commit: %q (%v)", out, err)
+	}
+	// A later run, with time to spare, commits and pushes it.
+	os.Remove(hook)
+	if err := Push(context.Background(), e.opts.Dir, now); err != nil {
+		t.Errorf("retry after cancellation: %v", err)
+	}
+}

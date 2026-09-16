@@ -43,11 +43,27 @@ func Push(ctx context.Context, dir string, now time.Time) error {
 	msg := "lifeo backup " + now.UTC().Format("2006-01-02 15:04 UTC")
 	if _, err := git(ctx, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", msg, "--", FileName); err != nil {
 		if cerr := ctx.Err(); cerr != nil {
+			// git may have written the commit and then been killed. If
+			// nothing is staged any more, it landed, and this is a push
+			// failure rather than a cancellation.
+			if committed(dir) {
+				return pushError(ctx, err)
+			}
 			return fmt.Errorf("backup git cancelled: %w", cerr)
 		}
 		return err
 	}
 	return push(ctx, dir)
+}
+
+// committed reports whether the backup file has nothing staged, meaning
+// the commit that was in flight completed. It uses its own short context
+// because the caller's may already be done.
+func committed(dir string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := git(ctx, dir, "diff", "--cached", "--quiet", "--", FileName)
+	return err == nil
 }
 
 // ErrPushFailed marks a push that failed after the commit succeeded.
