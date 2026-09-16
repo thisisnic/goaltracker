@@ -86,14 +86,36 @@ func runCmds(cmds []tea.Cmd) []tea.Msg {
 		go func(c tea.Cmd, ch chan tea.Msg) { ch <- c() }(c, chans[i])
 	}
 	deadline := time.After(cmdWait)
+	timedOut := false
 	for i, ch := range chans {
+		if timedOut {
+			// Past the deadline: take anything already finished, don't wait.
+			select {
+			case out[i] = <-ch:
+			default:
+			}
+			continue
+		}
 		select {
 		case out[i] = <-ch:
 		case <-deadline:
-			return out
+			timedOut = true
+			select {
+			case out[i] = <-ch:
+			default:
+			}
 		}
 	}
 	return out
+}
+
+func TestRunCmdsKeepsResultsAfterTimer(t *testing.T) {
+	timer := func() tea.Msg { time.Sleep(cmdWait * 3); return "late" }
+	quick := func() tea.Msg { return "quick" }
+	got := runCmds([]tea.Cmd{timer, quick, quick})
+	if got[0] != nil || got[1] != "quick" || got[2] != "quick" {
+		t.Errorf("runCmds = %v, want [nil quick quick]", got)
+	}
 }
 
 func press(m *model, keys ...string) {
