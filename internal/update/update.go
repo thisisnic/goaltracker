@@ -20,6 +20,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"golang.org/x/mod/semver"
 )
 
 // Repo is the GitHub repository releases are fetched from.
@@ -35,8 +37,45 @@ const maxDownload = 200 << 20
 type Result struct {
 	Current string // version running before
 	Latest  string // latest release tag, without the leading v
+	State   State  // how Current compares with Latest
 	Updated bool   // false when already current or when only checking
 	Path    string // the binary that was replaced
+}
+
+// State is how the running version compares with the latest release.
+type State int
+
+const (
+	// Older means the latest release is newer than the running build.
+	Older State = iota
+	// Current means the running build is the latest release.
+	Current
+	// Newer means the running build is ahead of the latest release, for
+	// example a build from main.
+	Newer
+	// Unknown means the running version is not a release version, such
+	// as a dev build, so the two cannot be compared.
+	Unknown
+)
+
+// ErrNotRelease is returned when the running build's version cannot be
+// compared with a release and Force was not given.
+var ErrNotRelease = errors.New("not a release build")
+
+// compare works out State from two version strings. Build metadata such
+// as +dirty is ignored, as semver says it should be.
+func compare(current, latest string) State {
+	c, l := "v"+strings.TrimPrefix(current, "v"), "v"+strings.TrimPrefix(latest, "v")
+	if !semver.IsValid(c) || !semver.IsValid(l) {
+		return Unknown
+	}
+	switch semver.Compare(c, l) {
+	case -1:
+		return Older
+	case 1:
+		return Newer
+	}
+	return Current
 }
 
 // Options adjust Update.
@@ -75,12 +114,21 @@ func Update(ctx context.Context, o Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	res := Result{Current: strings.TrimPrefix(o.Current, "v"), Latest: strings.TrimPrefix(rel.TagName, "v")}
-	if res.Current == res.Latest && !o.Force {
-		return res, nil
+	res := Result{
+		Current: strings.TrimPrefix(o.Current, "v"),
+		Latest:  strings.TrimPrefix(rel.TagName, "v"),
 	}
+	res.State = compare(res.Current, res.Latest)
 	if o.Check {
 		return res, nil
+	}
+	if !o.Force {
+		switch res.State {
+		case Current, Newer:
+			return res, nil
+		case Unknown:
+			return res, fmt.Errorf("%w: running %q, which is not a release version; pass --force to install %s", ErrNotRelease, res.Current, res.Latest)
+		}
 	}
 
 	exe := o.Executable
@@ -89,8 +137,8 @@ func Update(ctx context.Context, o Options) (Result, error) {
 		if err != nil {
 			return res, err
 		}
-		if real, err := filepath.EvalSymlinks(exe); err == nil {
-			exe = real
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = resolved
 		}
 	}
 	res.Path = exe

@@ -11,6 +11,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/mod v0.41.0
 	modernc.org/sqlite v1.59.0
 )
 

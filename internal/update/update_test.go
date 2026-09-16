@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,7 @@ type fakeRelease struct {
 	binary   []byte
 	archives map[string][]byte // name -> bytes
 	sums     string
+	omitSums bool // leave checksums.txt out of the asset listing
 	server   *httptest.Server
 }
 
@@ -48,6 +50,9 @@ func newFakeRelease(t *testing.T, tag string, binary []byte) *fakeRelease {
 	f.sums = sums.String()
 	f.server = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.server.Close)
+	old := APIBase
+	APIBase = f.server.URL
+	t.Cleanup(func() { APIBase = old })
 	return f
 }
 
@@ -58,7 +63,9 @@ func (f *fakeRelease) handle(w http.ResponseWriter, r *http.Request) {
 		for name := range f.archives {
 			rel.Assets = append(rel.Assets, asset{Name: name, URL: f.server.URL + "/dl/" + name})
 		}
-		rel.Assets = append(rel.Assets, asset{Name: "checksums.txt", URL: f.server.URL + "/dl/checksums.txt"})
+		if !f.omitSums {
+			rel.Assets = append(rel.Assets, asset{Name: "checksums.txt", URL: f.server.URL + "/dl/checksums.txt"})
+		}
 		json.NewEncoder(w).Encode(rel)
 	case r.URL.Path == "/dl/checksums.txt":
 		w.Write([]byte(f.sums))
@@ -111,6 +118,15 @@ func zipWith(t *testing.T, name string, content []byte) []byte {
 	return buf.Bytes()
 }
 
+func readExe(t *testing.T, exe string) string {
+	t.Helper()
+	b, err := os.ReadFile(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func fakeExe(t *testing.T) string {
 	t.Helper()
 	exe := filepath.Join(t.TempDir(), "bin", "goaltracker")
@@ -124,8 +140,7 @@ func fakeExe(t *testing.T) string {
 }
 
 func TestUpdateInstallsLatest(t *testing.T) {
-	f := newFakeRelease(t, "v0.2.0", []byte("new binary"))
-	APIBase = f.server.URL
+	newFakeRelease(t, "v0.2.0", []byte("new binary"))
 	exe := fakeExe(t)
 	res, err := Update(context.Background(), Options{Current: "0.1.0", Executable: exe, OS: "linux", Arch: "amd64"})
 	if err != nil {
@@ -134,11 +149,14 @@ func TestUpdateInstallsLatest(t *testing.T) {
 	if !res.Updated || res.Latest != "0.2.0" || res.Current != "0.1.0" || res.Path != exe {
 		t.Errorf("result = %+v", res)
 	}
-	got, _ := os.ReadFile(exe)
-	if string(got) != "new binary" {
+	if got := readExe(t, exe); got != "new binary" {
 		t.Errorf("binary content = %q", got)
 	}
-	if info, _ := os.Stat(exe); info.Mode().Perm()&0o100 == 0 {
+	info, err := os.Stat(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o100 == 0 {
 		t.Error("replaced binary is not executable")
 	}
 	leftovers, _ := filepath.Glob(filepath.Join(filepath.Dir(exe), ".goaltracker-update-*"))
@@ -148,8 +166,7 @@ func TestUpdateInstallsLatest(t *testing.T) {
 }
 
 func TestUpdateFromZipForWindows(t *testing.T) {
-	f := newFakeRelease(t, "v0.2.0", []byte("win binary"))
-	APIBase = f.server.URL
+	newFakeRelease(t, "v0.2.0", []byte("win binary"))
 	exe := fakeExe(t)
 	// Extraction path is what is under test; replace() behaves per the
 	// host OS, which is fine for the file content check.
@@ -157,14 +174,13 @@ func TestUpdateFromZipForWindows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := os.ReadFile(exe); string(got) != "win binary" || !res.Updated {
+	if got := readExe(t, exe); got != "win binary" || !res.Updated {
 		t.Errorf("zip update: content=%q res=%+v", got, res)
 	}
 }
 
 func TestUpdateAlreadyCurrentAndCheck(t *testing.T) {
-	f := newFakeRelease(t, "v0.2.0", []byte("new binary"))
-	APIBase = f.server.URL
+	newFakeRelease(t, "v0.2.0", []byte("new binary"))
 	exe := fakeExe(t)
 
 	res, err := Update(context.Background(), Options{Current: "v0.2.0", Executable: exe, OS: "linux", Arch: "amd64"})
@@ -175,7 +191,7 @@ func TestUpdateAlreadyCurrentAndCheck(t *testing.T) {
 	if err != nil || res.Updated || res.Latest != "0.2.0" {
 		t.Errorf("check: res=%+v err=%v", res, err)
 	}
-	if got, _ := os.ReadFile(exe); string(got) != "old binary" {
+	if got := readExe(t, exe); got != "old binary" {
 		t.Error("check or no-op modified the binary")
 	}
 	res, err = Update(context.Background(), Options{Current: "0.2.0", Force: true, Executable: exe, OS: "linux", Arch: "amd64"})
@@ -189,38 +205,68 @@ func TestUpdateRefusesBadChecksum(t *testing.T) {
 	// Tamper with the archive after the checksums were computed.
 	name := archiveName("0.2.0", "linux", "amd64")
 	f.archives[name] = append(f.archives[name], 0)
-	APIBase = f.server.URL
 	exe := fakeExe(t)
 	_, err := Update(context.Background(), Options{Current: "0.1.0", Executable: exe, OS: "linux", Arch: "amd64"})
 	if err == nil || !strings.Contains(err.Error(), "checksum") {
 		t.Fatalf("err = %v, want checksum failure", err)
 	}
-	if got, _ := os.ReadFile(exe); string(got) != "old binary" {
+	if got := readExe(t, exe); got != "old binary" {
 		t.Error("binary replaced despite bad checksum")
 	}
 }
 
 func TestUpdateRefusesWithoutChecksums(t *testing.T) {
 	f := newFakeRelease(t, "v0.2.0", []byte("new binary"))
-	APIBase = f.server.URL
-	// Drop the checksums asset from the listing by serving 404 for it.
-	orig := f.server.Config.Handler
-	f.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/dl/checksums.txt" {
-			http.NotFound(w, r)
-			return
-		}
-		orig.ServeHTTP(w, r)
-	})
+	f.omitSums = true // set before any request is made
 	exe := fakeExe(t)
-	if _, err := Update(context.Background(), Options{Current: "0.1.0", Executable: exe, OS: "linux", Arch: "amd64"}); err == nil {
-		t.Fatal("installed without checksums")
+	_, err := Update(context.Background(), Options{Current: "0.1.0", Executable: exe, OS: "linux", Arch: "amd64"})
+	if err == nil || !strings.Contains(err.Error(), "checksums.txt") {
+		t.Fatalf("err = %v, want a checksums refusal", err)
+	}
+	if got := readExe(t, exe); got != "old binary" {
+		t.Error("binary replaced without checksums")
+	}
+}
+
+func TestUpdateNeverDowngrades(t *testing.T) {
+	newFakeRelease(t, "v0.2.0", []byte("new binary"))
+	exe := fakeExe(t)
+	cases := []struct {
+		current string
+		state   State
+		wantErr error
+	}{
+		{"0.3.0", Newer, nil},
+		{"v0.2.1-0.20260910120000-abcdef123456", Newer, nil}, // go install @main pseudo-version
+		{"0.2.0+dirty", Current, nil},                        // checkout build at the tag
+		{"dev", Unknown, ErrNotRelease},
+		{"(devel)", Unknown, ErrNotRelease},
+	}
+	for _, c := range cases {
+		res, err := Update(context.Background(), Options{Current: c.current, Executable: exe, OS: "linux", Arch: "amd64"})
+		if res.State != c.state {
+			t.Errorf("%q: state = %v want %v", c.current, res.State, c.state)
+		}
+		if !errors.Is(err, c.wantErr) {
+			t.Errorf("%q: err = %v want %v", c.current, err, c.wantErr)
+		}
+		if res.Updated || readExe(t, exe) != "old binary" {
+			t.Errorf("%q: binary was replaced", c.current)
+		}
+		// --check reports the same state without touching anything.
+		if chk, err := Update(context.Background(), Options{Current: c.current, Check: true, Executable: exe, OS: "linux", Arch: "amd64"}); err != nil || chk.State != c.state {
+			t.Errorf("%q: check state=%v err=%v", c.current, chk.State, err)
+		}
+	}
+	// --force installs regardless.
+	res, err := Update(context.Background(), Options{Current: "dev", Force: true, Executable: exe, OS: "linux", Arch: "amd64"})
+	if err != nil || !res.Updated || readExe(t, exe) != "new binary" {
+		t.Errorf("force from dev: res=%+v err=%v", res, err)
 	}
 }
 
 func TestUpdateNoBuildForPlatform(t *testing.T) {
-	f := newFakeRelease(t, "v0.2.0", []byte("new binary"))
-	APIBase = f.server.URL
+	newFakeRelease(t, "v0.2.0", []byte("new binary"))
 	exe := fakeExe(t)
 	_, err := Update(context.Background(), Options{Current: "0.1.0", Executable: exe, OS: "plan9", Arch: "mips"})
 	if err == nil || !strings.Contains(err.Error(), "no build for plan9/mips") {

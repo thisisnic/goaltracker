@@ -30,8 +30,12 @@ published checksums, and replace this binary in place.`,
 			switch {
 			case res.Updated:
 				fmt.Fprintf(out, "updated %s -> %s (%s)\n", res.Current, res.Latest, res.Path)
-			case res.Current == res.Latest:
+			case res.State == update.Current:
 				fmt.Fprintf(out, "already the latest release, %s\n", res.Latest)
+			case res.State == update.Newer:
+				fmt.Fprintf(out, "running %s, which is ahead of the latest release %s\n", res.Current, res.Latest)
+			case res.State == update.Unknown:
+				fmt.Fprintf(out, "running %s, which is not a release version; latest release is %s. Pass --force to install it\n", res.Current, res.Latest)
 			default:
 				fmt.Fprintf(out, "update available: %s -> %s; run without --check to install\n", res.Current, res.Latest)
 			}
