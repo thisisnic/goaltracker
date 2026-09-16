@@ -47,6 +47,9 @@ func push(ctx context.Context, dir string) error {
 	ctx, cancel := context.WithTimeout(ctx, pushTimeout)
 	defer cancel()
 	if _, err := git(ctx, dir, "rev-parse", "--verify", "-q", "HEAD"); err != nil {
+		if ctx.Err() != nil {
+			return pushError(ctx, err)
+		}
 		return nil // nothing committed yet, nothing to push
 	}
 	_, upstreamErr := git(ctx, dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
@@ -60,10 +63,13 @@ func push(ctx context.Context, dir string) error {
 		}
 		return nil
 	}
+	if ctx.Err() != nil {
+		return pushError(ctx, upstreamErr)
+	}
 	// First push of a fresh clone: set the upstream as we go.
 	branch, err := git(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
-		return err
+		return pushError(ctx, err)
 	}
 	if _, err := git(ctx, dir, "push", "-q", "-u", "origin", strings.TrimSpace(branch)); err != nil {
 		return pushError(ctx, err)

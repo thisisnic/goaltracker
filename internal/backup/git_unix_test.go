@@ -52,9 +52,28 @@ func TestPushGivesUpOnHungRemote(t *testing.T) {
 		t.Fatalf("fake ssh never ran: %v", err)
 	}
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
-	time.Sleep(200 * time.Millisecond) // let the kill land
-	if err := syscall.Kill(pid, 0); err == nil {
-		syscall.Kill(pid, syscall.SIGKILL)
-		t.Errorf("fake ssh (pid %d) survived the push timeout", pid)
+	// Gone means reaped, or a zombie waiting for an init that does not
+	// reap promptly; either way it is no longer running.
+	gone := func() bool {
+		if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
+			return true
+		}
+		stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+		if err != nil {
+			return true
+		}
+		// State is the field after the parenthesised command name.
+		if i := strings.LastIndexByte(string(stat), ')'); i >= 0 && i+2 < len(stat) {
+			return stat[i+2] == 'Z'
+		}
+		return false
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for !gone() {
+		if time.Now().After(deadline) {
+			syscall.Kill(pid, syscall.SIGKILL)
+			t.Fatalf("fake ssh (pid %d) survived the push timeout", pid)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }

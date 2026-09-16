@@ -225,3 +225,15 @@ func TestPushErrorTimeoutWrapsOnce(t *testing.T) {
 		t.Errorf("ErrPushFailed appears more than once: %v", err)
 	}
 }
+
+func TestPushCancelledContextIsNotSuccess(t *testing.T) {
+	e := newEnv(t)
+	gitRepos(t, e.opts.Dir)
+	e.run(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := Push(ctx, e.opts.Dir, now)
+	if err == nil {
+		t.Fatal("push with a cancelled context reported success")
+	}
+}
