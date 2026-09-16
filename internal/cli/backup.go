@@ -96,7 +96,11 @@ the config file unless given here.`,
 
 // runBackup takes a snapshot and reports what happened on stdout.
 func runBackup(cmd *cobra.Command, store *goal.Store, b config.Backup) error {
-	res, err := backup.Run(cmd.Context(), store, b.Dir, b.Recipient)
+	res, err := backup.Run(cmd.Context(), store, backup.Options{
+		Dir:       b.Dir,
+		Recipient: b.Recipient,
+		Marker:    filepath.Join(config.Dir(), "last-backup"),
+	})
 	if err != nil {
 		return fmt.Errorf("backup: %w", err)
 	}

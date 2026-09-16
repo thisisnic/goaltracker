@@ -28,13 +28,24 @@ import (
 // FileName is the encrypted backup's name inside the backup folder.
 const FileName = "lifeo.db.age"
 
-// markerFile records the content hash and recipient of the last backup so
-// an unchanged database does not produce a new file, and a change of key or
-// a deleted backup file is noticed.
-const markerFile = ".last-backup"
+// tmpPattern names the temporary file a backup is written to before being
+// renamed into place. It lives in the backup folder so the rename is atomic.
+const tmpPattern = ".lifeo-backup-*.tmp"
 
 // sqliteMagic starts every SQLite database file.
 const sqliteMagic = "SQLite format 3\x00"
+
+// Options say where a backup goes and how to tell it is unchanged.
+type Options struct {
+	// Dir is the backup folder.
+	Dir string
+	// Recipient is the age public key to encrypt to.
+	Recipient string
+	// Marker is a file, kept outside Dir, recording what the last backup
+	// contained so an unchanged database is not rewritten. Empty disables
+	// skipping.
+	Marker string
+}
 
 // Result says what a backup did.
 type Result struct {
@@ -42,17 +53,19 @@ type Result struct {
 	Skipped bool   // true when the database was unchanged since the last backup
 }
 
-// Run writes an encrypted copy of store to dir/FileName, replacing any
-// previous one. It returns Skipped when the database content, the
-// recipient and the backup file are all unchanged since the last run.
-func Run(ctx context.Context, store *goal.Store, dir, recipient string) (Result, error) {
-	rcpt, err := parseRecipient(recipient)
+// Run writes an encrypted copy of store to Dir/FileName, replacing any
+// previous one. It returns Skipped when the database content and recipient
+// match the marker and the backup file on disk is still the one the marker
+// describes.
+func Run(ctx context.Context, store *goal.Store, o Options) (Result, error) {
+	rcpt, err := parseRecipient(o.Recipient)
 	if err != nil {
 		return Result{}, fmt.Errorf("backup recipient: %w", err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := os.MkdirAll(o.Dir, 0o700); err != nil {
 		return Result{}, err
 	}
+	removeStaleTemps(o.Dir)
 
 	tmp, err := os.MkdirTemp("", "lifeo-snapshot-")
 	if err != nil {
@@ -68,32 +81,75 @@ func Run(ctx context.Context, store *goal.Store, dir, recipient string) (Result,
 		return Result{}, err
 	}
 
-	sum := sha256.Sum256(plain)
-	stamp := hex.EncodeToString(sum[:]) + " " + rcpt.String()
-	out := filepath.Join(dir, FileName)
-	marker := filepath.Join(dir, markerFile)
-	if last, err := os.ReadFile(marker); err == nil && strings.TrimSpace(string(last)) == stamp {
-		if _, err := os.Stat(out); err == nil {
-			return Result{Path: out, Skipped: true}, nil
+	out := filepath.Join(o.Dir, FileName)
+	plainHash := hashOf(plain)
+	if o.Marker != "" {
+		if m, err := readMarker(o.Marker); err == nil && m.plain == plainHash && m.recipient == rcpt.String() {
+			if cur, err := os.ReadFile(out); err == nil && hashOf(cur) == m.cipher {
+				return Result{Path: out, Skipped: true}, nil
+			}
 		}
 	}
 
-	if err := writeEncrypted(out, plain, rcpt); err != nil {
+	cipherHash, err := writeEncrypted(out, plain, rcpt)
+	if err != nil {
 		return Result{}, err
 	}
-	if err := os.WriteFile(marker, []byte(stamp+"\n"), 0o600); err != nil {
-		return Result{}, err
+	if o.Marker != "" {
+		m := marker{plain: plainHash, recipient: rcpt.String(), cipher: cipherHash}
+		if err := m.write(o.Marker); err != nil {
+			return Result{}, err
+		}
 	}
 	return Result{Path: out}, nil
 }
 
+// marker is what the last backup contained: a hash of the database, the
+// recipient it was encrypted to, and a hash of the encrypted file.
+type marker struct {
+	plain, recipient, cipher string
+}
+
+func readMarker(path string) (marker, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return marker{}, err
+	}
+	f := strings.Fields(string(b))
+	if len(f) != 3 {
+		return marker{}, errors.New("malformed marker")
+	}
+	return marker{plain: f[0], recipient: f[1], cipher: f[2]}, nil
+}
+
+func (m marker) write(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(m.plain+" "+m.recipient+" "+m.cipher+"\n"), 0o600)
+}
+
+func hashOf(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// removeStaleTemps deletes temporary files left by a backup that was
+// killed part way, so they never end up committed to the data repo.
+func removeStaleTemps(dir string) {
+	matches, _ := filepath.Glob(filepath.Join(dir, tmpPattern))
+	for _, m := range matches {
+		os.Remove(m)
+	}
+}
+
 // writeEncrypted encrypts plain to a temporary file beside path and renames
 // it into place, so a failure part way leaves no partial file and a reader
-// never sees a half-written one.
-func writeEncrypted(path string, plain []byte, rcpt age.Recipient) (err error) {
-	f, err := os.CreateTemp(filepath.Dir(path), ".lifeo-backup-*.tmp")
+// never sees a half-written one. It returns the hash of the encrypted file.
+func writeEncrypted(path string, plain []byte, rcpt age.Recipient) (cipherHash string, err error) {
+	f, err := os.CreateTemp(filepath.Dir(path), tmpPattern)
 	if err != nil {
-		return err
+		return "", err
 	}
 	tmp := f.Name()
 	defer func() {
@@ -103,25 +159,29 @@ func writeEncrypted(path string, plain []byte, rcpt age.Recipient) (err error) {
 		}
 	}()
 	if err = f.Chmod(0o600); err != nil {
-		return err
+		return "", err
 	}
-	w, err := age.Encrypt(f, rcpt)
+	h := sha256.New()
+	w, err := age.Encrypt(io.MultiWriter(f, h), rcpt)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if _, err = w.Write(plain); err != nil {
-		return err
+		return "", err
 	}
 	if err = w.Close(); err != nil {
-		return err
+		return "", err
 	}
 	if err = f.Sync(); err != nil {
-		return err
+		return "", err
 	}
 	if err = f.Close(); err != nil {
-		return err
+		return "", err
 	}
-	return os.Rename(tmp, path)
+	if err = os.Rename(tmp, path); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // Decrypt reads an encrypted backup using the identities in identityFile
@@ -155,6 +215,14 @@ func Decrypt(backupFile, identityFile string) ([]byte, error) {
 	return plain, nil
 }
 
+// sidecars are the files SQLite keeps beside a database in WAL mode. They
+// are named after the database, so moving them with the same suffix keeps
+// them paired with it.
+var sidecars = []string{"-wal", "-shm"}
+
+// rename is os.Rename, swapped out by tests to make a step of Restore fail.
+var rename = os.Rename
+
 // Restore replaces the database at dbPath with the decrypted backup. The
 // current database, if any, is kept beside it as dbPath + ".bak", or a
 // timestamped .bak when one already exists, together with its WAL files so
@@ -173,48 +241,74 @@ func Restore(backupFile, identityFile, dbPath string, now time.Time) (kept strin
 		return "", err
 	}
 
-	if _, err := os.Stat(dbPath); err == nil {
+	if !exists(dbPath) {
+		// No live database, but stale WAL files would be applied to the
+		// restored one, so they must go.
+		for _, s := range sidecars {
+			os.Remove(dbPath + s)
+		}
+	} else {
 		kept = dbPath + ".bak"
-		if _, err := os.Stat(kept); err == nil {
+		if anyExists(kept, sidecars) {
 			kept = dbPath + "." + now.UTC().Format("20060102-150405") + ".bak"
 		}
-		if _, err := os.Stat(kept); err == nil {
+		if anyExists(kept, sidecars) {
 			os.Remove(tmp)
 			return "", fmt.Errorf("%s already exists; move it aside first", kept)
 		}
-		if err := os.Rename(dbPath, kept); err != nil {
+		if err := rename(dbPath, kept); err != nil {
 			os.Remove(tmp)
 			return "", err
 		}
-		// SQLite names the WAL and shm files after the database, so moving
-		// them with the same suffix keeps them usable with the .bak.
-		for _, suffix := range []string{"-wal", "-shm"} {
-			if _, err := os.Stat(dbPath + suffix); err == nil {
-				if err := os.Rename(dbPath+suffix, kept+suffix); err != nil {
-					rollback(dbPath, kept)
+		for _, s := range sidecars {
+			if exists(dbPath + s) {
+				if err := rename(dbPath+s, kept+s); err != nil {
 					os.Remove(tmp)
-					return "", err
+					return undo(dbPath, kept, err)
 				}
 			}
 		}
 	}
-	if err := os.Rename(tmp, dbPath); err != nil {
-		if kept != "" {
-			rollback(dbPath, kept)
-		}
+	if err := rename(tmp, dbPath); err != nil {
 		os.Remove(tmp)
+		if kept != "" {
+			return undo(dbPath, kept, err)
+		}
 		return "", err
 	}
 	return kept, nil
 }
 
-// rollback moves a kept database and its WAL files back to dbPath.
-func rollback(dbPath, kept string) {
-	for _, suffix := range []string{"", "-wal", "-shm"} {
-		if _, err := os.Stat(kept + suffix); err == nil {
-			os.Rename(kept+suffix, dbPath+suffix)
+// undo moves a kept database and its WAL files back to dbPath after a
+// failed restore. If that also fails, the error says where the data is.
+func undo(dbPath, kept string, cause error) (string, error) {
+	for _, s := range append([]string{""}, sidecars...) {
+		if !exists(kept + s) {
+			continue
+		}
+		if err := rename(kept+s, dbPath+s); err != nil {
+			return kept, fmt.Errorf("%w; and could not put the database back: %v. Your data is at %s", cause, err, kept)
 		}
 	}
+	return "", cause
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// anyExists reports whether path or any of path+suffix exists.
+func anyExists(path string, suffixes []string) bool {
+	if exists(path) {
+		return true
+	}
+	for _, s := range suffixes {
+		if exists(path + s) {
+			return true
+		}
+	}
+	return false
 }
 
 // NewKey generates an age keypair, writes the private key to identityFile

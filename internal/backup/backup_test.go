@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,13 +14,53 @@ import (
 
 var now = time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
 
-func TestBackupRestoreRoundTrip(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	dbPath := filepath.Join(root, "data", "lifeo.db")
-	keyFile := filepath.Join(root, "cfg", "key.txt")
-	dir := filepath.Join(root, "backups")
+// env is a backup setup in a temp dir: a key, a database and options
+// pointing at a backup folder with the marker kept outside it.
+type env struct {
+	root, dbPath, keyFile string
+	opts                  Options
+	store                 *goal.Store
+}
 
+func newEnv(t *testing.T) *env {
+	t.Helper()
+	root := t.TempDir()
+	e := &env{
+		root:    root,
+		dbPath:  filepath.Join(root, "data", "lifeo.db"),
+		keyFile: filepath.Join(root, "cfg", "key.txt"),
+	}
+	recipient, err := NewKey(e.keyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.opts = Options{
+		Dir:       filepath.Join(root, "repo"),
+		Recipient: recipient,
+		Marker:    filepath.Join(root, "cfg", "last-backup"),
+	}
+	e.store, err = goal.Open(e.dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { e.store.Close() })
+	return e
+}
+
+func (e *env) run(t *testing.T) Result {
+	t.Helper()
+	res, err := Run(context.Background(), e.store, e.opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists(res.Path) {
+		t.Fatalf("backup reported %s but it does not exist", res.Path)
+	}
+	return res
+}
+
+func TestNewKey(t *testing.T) {
+	keyFile := filepath.Join(t.TempDir(), "cfg", "key.txt")
 	recipient, err := NewKey(keyFile)
 	if err != nil {
 		t.Fatal(err)
@@ -33,20 +74,17 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 	if _, err := NewKey(keyFile); err == nil {
 		t.Error("NewKey overwrote an existing key file")
 	}
+}
 
-	store, err := goal.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	g, err := store.Add(ctx, goal.NewGoal{Statement: "secret goal", Period: "2026", Target: 10})
+func TestBackupRestoreRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	g, err := e.store.Add(ctx, goal.NewGoal{Statement: "secret goal", Period: "2026", Target: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	res, err := Run(ctx, store, dir, recipient)
-	if err != nil {
-		t.Fatal(err)
-	}
+	res := e.run(t)
 	if res.Skipped || filepath.Base(res.Path) != FileName {
 		t.Fatalf("first backup: %+v", res)
 	}
@@ -54,56 +92,45 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 	if strings.Contains(string(raw), "secret goal") {
 		t.Error("backup is not encrypted")
 	}
-	firstBackup := append([]byte{}, raw...)
+	first := append([]byte{}, raw...)
 
 	// Same content again: skipped, file untouched.
-	res2, err := Run(ctx, store, dir, recipient)
-	if err != nil {
-		t.Fatal(err)
-	}
+	res2 := e.run(t)
 	if !res2.Skipped || res2.Path != res.Path {
 		t.Errorf("unchanged database was not skipped: %+v", res2)
 	}
-	if again, _ := os.ReadFile(res.Path); string(again) != string(firstBackup) {
+	if again, _ := os.ReadFile(res.Path); string(again) != string(first) {
 		t.Error("skipped backup rewrote the file")
 	}
 
-	// A change replaces the single file.
-	if _, err := store.RecordProgress(ctx, g.ID, 5, ""); err != nil {
+	// A change replaces the single file, and nothing else is in the repo.
+	if _, err := e.store.RecordProgress(ctx, g.ID, 5, ""); err != nil {
 		t.Fatal(err)
 	}
-	res3, err := Run(ctx, store, dir, recipient)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res3.Skipped || res3.Path != res.Path {
+	if res3 := e.run(t); res3.Skipped || res3.Path != res.Path {
 		t.Errorf("changed database: %+v", res3)
 	}
-	entries, _ := os.ReadDir(dir)
-	var names []string
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	if len(names) != 2 { // lifeo.db.age and the marker, no temp files left
-		t.Errorf("backup dir has %v", names)
+	entries, _ := os.ReadDir(e.opts.Dir)
+	if len(entries) != 1 || entries[0].Name() != FileName {
+		var names []string
+		for _, en := range entries {
+			names = append(names, en.Name())
+		}
+		t.Errorf("repo folder has %v, want only %s", names, FileName)
 	}
 
-	// Keep the first backup's bytes as a separate file to restore from.
-	old := filepath.Join(root, "old.db.age")
-	os.WriteFile(old, firstBackup, 0o600)
-
-	store.Close()
-	kept, err := Restore(old, keyFile, dbPath, now)
+	// Restore the first backup over the live database.
+	old := filepath.Join(e.root, "old.db.age")
+	os.WriteFile(old, first, 0o600)
+	e.store.Close()
+	kept, err := Restore(old, e.keyFile, e.dbPath, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if kept != dbPath+".bak" {
+	if kept != e.dbPath+".bak" {
 		t.Errorf("kept = %q", kept)
 	}
-	if _, err := os.Stat(kept); err != nil {
-		t.Errorf("previous database not kept: %v", err)
-	}
-	restored, err := goal.Open(dbPath)
+	restored, err := goal.Open(e.dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,9 +143,9 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 		t.Errorf("restored goal = %+v, want the pre-progress state", got)
 	}
 
-	// The .bak still has the progress that was recorded after the first
-	// backup, and a second restore does not overwrite it.
-	kept2, err := Restore(old, keyFile, dbPath, now)
+	// A second restore keeps to a new name, and the first .bak still holds
+	// the progress recorded after the first backup.
+	kept2, err := Restore(old, e.keyFile, e.dbPath, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,101 +162,198 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 	}
 }
 
-func TestRunNoticesNewKeyAndMissingFile(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	dir := filepath.Join(root, "backups")
-	r1, _ := NewKey(filepath.Join(root, "a.txt"))
-	r2, _ := NewKey(filepath.Join(root, "b.txt"))
-	store, _ := goal.Open(filepath.Join(root, "lifeo.db"))
-	defer store.Close()
-
-	if res, _ := Run(ctx, store, dir, r1); res.Skipped {
+func TestRunNoticesNewKeyMissingOrSwappedFile(t *testing.T) {
+	e := newEnv(t)
+	if res := e.run(t); res.Skipped {
 		t.Fatal("first run skipped")
 	}
-	if res, _ := Run(ctx, store, dir, r2); res.Skipped {
+
+	// A new recipient must produce a new file the new key can open.
+	r2, err := NewKey(filepath.Join(e.root, "b.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.opts.Recipient = r2
+	if res := e.run(t); res.Skipped {
 		t.Error("new recipient was skipped; backup would be unreadable by the new key")
 	}
-	os.Remove(filepath.Join(dir, FileName))
-	if res, _ := Run(ctx, store, dir, r2); res.Skipped {
+
+	// A deleted backup file is rewritten.
+	os.Remove(filepath.Join(e.opts.Dir, FileName))
+	if res := e.run(t); res.Skipped {
 		t.Error("deleted backup file was not rewritten")
+	}
+
+	// A file swapped in from git history is not trusted either.
+	if err := os.WriteFile(filepath.Join(e.opts.Dir, FileName), []byte("something else"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if res := e.run(t); res.Skipped {
+		t.Error("swapped backup file was not rewritten")
+	}
+
+	// Stale temp files from a killed run are cleaned up.
+	stale := filepath.Join(e.opts.Dir, ".lifeo-backup-123.tmp")
+	os.WriteFile(stale, []byte("partial"), 0o600)
+	e.run(t)
+	if exists(stale) {
+		t.Error("stale temp file left in the repo folder")
+	}
+
+	// Without a marker every run writes.
+	e.opts.Marker = ""
+	if res := e.run(t); res.Skipped {
+		t.Error("run without marker was skipped")
 	}
 }
 
 func TestRestoreKeepsWALWithBak(t *testing.T) {
-	root := t.TempDir()
-	keyFile := filepath.Join(root, "key.txt")
-	recipient, _ := NewKey(keyFile)
-	dbPath := filepath.Join(root, "lifeo.db")
-	store, _ := goal.Open(dbPath)
-	_, _ = store.Add(context.Background(), goal.NewGoal{Statement: "x", Period: "2026"})
-	res, err := Run(context.Background(), store, filepath.Join(root, "b"), recipient)
-	if err != nil {
+	e := newEnv(t)
+	if _, err := e.store.Add(context.Background(), goal.NewGoal{Statement: "x", Period: "2026"}); err != nil {
 		t.Fatal(err)
 	}
-	store.Close()
+	res := e.run(t)
+	e.store.Close()
+
 	// Fake uncheckpointed WAL and shm files beside the live database.
-	os.WriteFile(dbPath+"-wal", []byte("wal"), 0o600)
-	os.WriteFile(dbPath+"-shm", []byte("shm"), 0o600)
-	kept, err := Restore(res.Path, keyFile, dbPath, now)
+	os.WriteFile(e.dbPath+"-wal", []byte("wal"), 0o600)
+	os.WriteFile(e.dbPath+"-shm", []byte("shm"), 0o600)
+	kept, err := Restore(res.Path, e.keyFile, e.dbPath, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, suffix := range []string{"-wal", "-shm"} {
-		if _, err := os.Stat(kept + suffix); err != nil {
-			t.Errorf("%s not kept with the .bak: %v", suffix, err)
+	for _, s := range sidecars {
+		if !exists(kept + s) {
+			t.Errorf("%s not kept with the .bak", s)
 		}
-		if _, err := os.Stat(dbPath + suffix); err == nil {
-			t.Errorf("stale %s left beside the restored database", suffix)
+		if exists(e.dbPath + s) {
+			t.Errorf("stale %s left beside the restored database", s)
 		}
+	}
+
+	// Leftover .bak sidecars count as the name being taken.
+	os.Remove(kept)
+	kept2, err := Restore(res.Path, e.keyFile, e.dbPath, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept2 == kept {
+		t.Errorf("restore reused %s although its WAL files were still there", kept)
+	}
+
+	// With no live database, stale sidecars are removed, not paired.
+	os.Remove(e.dbPath)
+	os.WriteFile(e.dbPath+"-wal", []byte("wal"), 0o600)
+	kept3, err := Restore(res.Path, e.keyFile, e.dbPath, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept3 != "" || exists(e.dbPath+"-wal") {
+		t.Errorf("no-live-db restore: kept=%q wal exists=%v", kept3, exists(e.dbPath+"-wal"))
+	}
+}
+
+func TestRestoreUndoOnFailure(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.store.Add(context.Background(), goal.NewGoal{Statement: "keep", Period: "2026"}); err != nil {
+		t.Fatal(err)
+	}
+	res := e.run(t)
+	e.store.Close()
+	os.WriteFile(e.dbPath+"-wal", []byte("wal"), 0o600)
+	before, _ := os.ReadFile(e.dbPath)
+
+	// Fail the final swap only: the temp file moving into place.
+	tmp := e.dbPath + ".restore-tmp"
+	rename = func(from, to string) error {
+		if from == tmp {
+			return errors.New("disk on fire")
+		}
+		return os.Rename(from, to)
+	}
+	t.Cleanup(func() { rename = os.Rename })
+
+	kept, err := Restore(res.Path, e.keyFile, e.dbPath, now)
+	if err == nil || !strings.Contains(err.Error(), "disk on fire") {
+		t.Fatalf("err = %v", err)
+	}
+	if kept != "" {
+		t.Errorf("kept = %q after a rolled-back restore", kept)
+	}
+	after, _ := os.ReadFile(e.dbPath)
+	if string(after) != string(before) {
+		t.Error("the original database was not put back")
+	}
+	if !exists(e.dbPath + "-wal") {
+		t.Error("the WAL was not put back")
+	}
+	for _, leftover := range []string{e.dbPath + ".bak", e.dbPath + ".bak-wal", e.dbPath + ".restore-tmp"} {
+		if exists(leftover) {
+			t.Errorf("%s left behind after undo", leftover)
+		}
+	}
+
+	// If the undo itself fails, the error says where the data is.
+	rename = func(from, to string) error {
+		if from == tmp {
+			return errors.New("disk on fire")
+		}
+		if strings.HasPrefix(from, e.dbPath+".bak") {
+			return errors.New("still on fire")
+		}
+		return os.Rename(from, to)
+	}
+	kept, err = Restore(res.Path, e.keyFile, e.dbPath, now)
+	if err == nil || !strings.Contains(err.Error(), "Your data is at") {
+		t.Fatalf("err = %v", err)
+	}
+	if kept == "" || !exists(kept) {
+		t.Errorf("kept = %q, want the path holding the data", kept)
 	}
 }
 
 func TestRunRejectsBadRecipient(t *testing.T) {
-	store, _ := goal.Open(filepath.Join(t.TempDir(), "lifeo.db"))
-	defer store.Close()
-	if _, err := Run(context.Background(), store, t.TempDir(), "not-a-key"); err == nil {
+	e := newEnv(t)
+	e.opts.Recipient = "not-a-key"
+	if _, err := Run(context.Background(), e.store, e.opts); err == nil {
 		t.Error("bad recipient accepted")
 	}
 }
 
 func TestDecryptWrongKey(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	recipient, _ := NewKey(filepath.Join(root, "a.txt"))
-	_, _ = NewKey(filepath.Join(root, "b.txt"))
-	store, _ := goal.Open(filepath.Join(root, "lifeo.db"))
-	defer store.Close()
-	res, err := Run(ctx, store, filepath.Join(root, "backups"), recipient)
-	if err != nil {
+	e := newEnv(t)
+	res := e.run(t)
+	other := filepath.Join(e.root, "b.txt")
+	if _, err := NewKey(other); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Decrypt(res.Path, filepath.Join(root, "b.txt")); err == nil {
+	if _, err := Decrypt(res.Path, other); err == nil {
 		t.Error("decrypted with the wrong key")
 	}
-	if _, err := Decrypt(res.Path, filepath.Join(root, "missing.txt")); err == nil {
+	if _, err := Decrypt(res.Path, filepath.Join(e.root, "missing.txt")); err == nil {
 		t.Error("decrypted with no key")
 	}
 }
 
 func TestRestoreRefusesNonDatabase(t *testing.T) {
-	root := t.TempDir()
-	keyFile := filepath.Join(root, "key.txt")
-	recipient, _ := NewKey(keyFile)
-	junk := filepath.Join(root, "junk.db.age")
-	rcpt, _ := parseRecipient(recipient)
-	if err := writeEncrypted(junk, []byte("hello"), rcpt); err != nil {
+	e := newEnv(t)
+	junk := filepath.Join(e.root, "junk.db.age")
+	rcpt, err := parseRecipient(e.opts.Recipient)
+	if err != nil {
 		t.Fatal(err)
 	}
-	dbPath := filepath.Join(root, "lifeo.db")
-	os.WriteFile(dbPath, []byte("keep me"), 0o600)
-	if _, err := Restore(junk, keyFile, dbPath, now); err == nil {
+	if _, err := writeEncrypted(junk, []byte("hello"), rcpt); err != nil {
+		t.Fatal(err)
+	}
+	e.store.Close()
+	os.WriteFile(e.dbPath, []byte("keep me"), 0o600)
+	if _, err := Restore(junk, e.keyFile, e.dbPath, now); err == nil {
 		t.Fatal("restored a non-database")
 	}
-	if b, _ := os.ReadFile(dbPath); string(b) != "keep me" {
+	if b, _ := os.ReadFile(e.dbPath); string(b) != "keep me" {
 		t.Error("live database was touched by a failed restore")
 	}
-	if _, err := os.Stat(dbPath + ".restore-tmp"); err == nil {
+	if exists(e.dbPath + ".restore-tmp") {
 		t.Error("temp file left behind")
 	}
 }
