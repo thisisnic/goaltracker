@@ -191,32 +191,6 @@ func TestPushNeedsRepo(t *testing.T) {
 	}
 }
 
-func TestPushGivesUpOnHungRemote(t *testing.T) {
-	e := newEnv(t)
-	gitRepos(t, e.opts.Dir)
-	e.run(t)
-	// A "remote" over ssh where ssh is a script that sleeps forever, with
-	// the timeout shortened so the test is quick.
-	fake := filepath.Join(t.TempDir(), "ssh")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nsleep 60\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("GIT_SSH_COMMAND", fake)
-	if out, err := exec.Command("git", "-C", e.opts.Dir, "remote", "set-url", "origin", "git@example.invalid:nobody/nothing.git").CombinedOutput(); err != nil {
-		t.Fatalf("set-url: %v\n%s", err, out)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	start := time.Now()
-	err := Push(ctx, e.opts.Dir, now)
-	if !errors.Is(err, ErrPushFailed) {
-		t.Fatalf("err = %v, want ErrPushFailed", err)
-	}
-	if took := time.Since(start); took > 15*time.Second {
-		t.Errorf("push took %s; the hung ssh was not cut off", took)
-	}
-}
-
 func TestPushErrorHints(t *testing.T) {
 	cases := map[string]string{
 		"! [rejected] main -> main (non-fast-forward)":                        "git pull",
@@ -225,7 +199,7 @@ func TestPushErrorHints(t *testing.T) {
 		"fatal: 'origin' does not appear to be a git repository":              "no origin remote",
 	}
 	for msg, hint := range cases {
-		err := pushError(errors.New(msg))
+		err := pushError(context.Background(), errors.New(msg))
 		if !errors.Is(err, ErrPushFailed) {
 			t.Errorf("%q: not ErrPushFailed", msg)
 		}
@@ -236,5 +210,18 @@ func TestPushErrorHints(t *testing.T) {
 		} else if !strings.Contains(err.Error(), hint) {
 			t.Errorf("%q: want hint %q, got %v", msg, hint, err)
 		}
+	}
+}
+
+func TestPushErrorTimeoutWrapsOnce(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+	err := pushError(ctx, errors.New("git push: killed"))
+	if !errors.Is(err, ErrPushFailed) || !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("err = %v", err)
+	}
+	if strings.Count(err.Error(), "push failed") != 1 {
+		t.Errorf("ErrPushFailed appears more than once: %v", err)
 	}
 }

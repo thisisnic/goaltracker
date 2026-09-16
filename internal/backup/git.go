@@ -43,14 +43,9 @@ var ErrPushFailed = errors.New("push failed")
 // TUI from exiting for long.
 const pushTimeout = 60 * time.Second
 
-func push(ctx context.Context, dir string) (err error) {
+func push(ctx context.Context, dir string) error {
 	ctx, cancel := context.WithTimeout(ctx, pushTimeout)
 	defer cancel()
-	defer func() {
-		if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			err = fmt.Errorf("%w: gave up after %s: %v", ErrPushFailed, pushTimeout, err)
-		}
-	}()
 	if _, err := git(ctx, dir, "rev-parse", "--verify", "-q", "HEAD"); err != nil {
 		return nil // nothing committed yet, nothing to push
 	}
@@ -61,7 +56,7 @@ func push(ctx context.Context, dir string) (err error) {
 			return nil
 		}
 		if _, err := git(ctx, dir, "push", "-q"); err != nil {
-			return pushError(err)
+			return pushError(ctx, err)
 		}
 		return nil
 	}
@@ -71,14 +66,18 @@ func push(ctx context.Context, dir string) (err error) {
 		return err
 	}
 	if _, err := git(ctx, dir, "push", "-q", "-u", "origin", strings.TrimSpace(branch)); err != nil {
-		return pushError(err)
+		return pushError(ctx, err)
 	}
 	return nil
 }
 
-// pushError wraps a failed push, adding a hint for the causes that will
-// not fix themselves on retry.
-func pushError(err error) error {
+// pushError wraps a failed push once in ErrPushFailed, adding a hint for
+// the causes that will not fix themselves on retry. ctx is the push's own
+// context, so a deadline on it means the remote did not answer in time.
+func pushError(ctx context.Context, err error) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("%w: timed out waiting for the remote: %v", ErrPushFailed, err)
+	}
 	msg := err.Error()
 	switch {
 	case strings.Contains(msg, "non-fast-forward") || strings.Contains(msg, "fetch first"):
