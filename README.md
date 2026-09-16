@@ -78,40 +78,6 @@ backup, so the data repo needs an upstream and credentials that work without
 a prompt, such as an SSH key. A failed push is reported and retried next
 time. Without it, commit and push the data repo however you like.
 
-## Upgrading from lifeo
-
-The command used to be called `lifeo`. Nothing moves your data across on
-its own. Do this once, with neither lifeo nor goaltracker running, and
-before goaltracker has created anything of its own. If you have already
-run `goaltracker`, move what it made aside first rather than deleting it,
-in case you added goals or made a backup with a new key:
-
-```sh
-mv ~/.local/share/goaltracker ~/.local/share/goaltracker.new
-mv ~/.config/goaltracker ~/.config/goaltracker.new
-# and if goaltracker already wrote a backup into your backup folder:
-cd <your backup folder> && git mv goaltracker.db.age goaltracker.db.age.new && git commit -m "keep new-key backup"
-```
-
-Check none of those `.new` names exist before you start, and delete them
-only once you are sure nothing in them matters.
-
-```sh
-mv ~/.config/lifeo ~/.config/goaltracker
-rm -f ~/.config/goaltracker/last-backup-*
-sed -i 's|/.config/lifeo/|/.config/goaltracker/|' ~/.config/goaltracker/config.toml
-mkdir -p ~/.local/share/goaltracker
-# the database and, if lifeo last exited uncleanly, its -wal and -shm files
-for f in ~/.local/share/lifeo/lifeo.db*; do
-  mv "$f" ~/.local/share/goaltracker/goaltracker.db"${f#*/lifeo.db}"
-done
-rmdir ~/.local/share/lifeo
-cd <your backup folder> && git mv lifeo.db.age goaltracker.db.age && git commit -m "rename" && git push
-```
-
-`LIFEO_DB` and `LIFEO_PRIVATE` are now `GOALTRACKER_DB` and
-`GOALTRACKER_PRIVATE`.
-
 ## Development
 
 ```sh
