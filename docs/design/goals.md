@@ -7,8 +7,7 @@ decided.
 ## Context
 
 The app is a central place to plan work and time: choose what tasks to do,
-track progress towards goals, and work through problems. A CBT and mood
-tracking part is also planned but not yet designed. This document covers
+track progress towards goals, and work through problems. This document covers
 goals only.
 
 ## Goals
