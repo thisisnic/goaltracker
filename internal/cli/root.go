@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -74,11 +74,16 @@ func Execute() {
 	}
 }
 
-// envBool reads a boolean environment variable. Empty or unparseable
-// values count as false, so LIFEO_PRIVATE=0 does what it says.
+// envBool reads a boolean environment variable. It fails closed: any value
+// that is set counts as true unless it is an explicit off value such as 0,
+// false, no or off, so a typo never silently turns private mode off.
 func envBool(name string) bool {
-	v, err := strconv.ParseBool(os.Getenv(name))
-	return err == nil && v
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
+	switch v {
+	case "", "0", "f", "false", "n", "no", "off":
+		return false
+	}
+	return true
 }
 
 func openStore(path *string) (*goal.Store, error) {
