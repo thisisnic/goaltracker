@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -48,21 +49,22 @@ CREATE INDEX IF NOT EXISTS progress_goal ON progress(goal_id, recorded_at);
 // -wal and -shm files it keeps beside it.
 func Open(path string) (*Store, error) {
 	dir := filepath.Dir(path)
+	created := false
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		created = true
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("create database: %w", err)
+		return nil, fmt.Errorf("open database file: %w", err)
 	}
-	f.Close()
-	// Files and directories made by earlier versions may be looser.
-	for p, mode := range map[string]os.FileMode{dir: 0o700, path: 0o600, path + "-wal": 0o600, path + "-shm": 0o600} {
-		if info, err := os.Stat(p); err == nil && info.Mode().Perm() != mode {
-			if err := os.Chmod(p, mode); err != nil {
-				return nil, fmt.Errorf("restrict %s: %w", p, err)
-			}
-		}
+	if err := f.Close(); err != nil {
+		return nil, fmt.Errorf("open database file: %w", err)
+	}
+	if err := restrict(dir, path, created); err != nil {
+		return nil, err
 	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -84,6 +86,33 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	return &Store{db: db}, nil
+}
+
+// restrict tightens modes left loose by earlier versions. The database and
+// its WAL files are always made 0600. The directory is only touched when
+// this call created it or it is the tool's own data directory, never a
+// directory the user chose such as their home or /tmp. Windows does not
+// use these modes, so it is skipped.
+func restrict(dir, path string, createdDir bool) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	targets := map[string]os.FileMode{path: 0o600, path + "-wal": 0o600, path + "-shm": 0o600}
+	if createdDir || filepath.Base(dir) == "goaltracker" {
+		targets[dir] = 0o700
+	}
+	for p, mode := range targets {
+		info, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		if info.Mode().Perm() != mode {
+			if err := os.Chmod(p, mode); err != nil {
+				return fmt.Errorf("restrict %s: %w", p, err)
+			}
+		}
+	}
+	return nil
 }
 
 // Close closes the database.

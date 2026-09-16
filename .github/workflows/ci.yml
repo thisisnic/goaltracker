@@ -19,3 +19,4 @@ jobs:
       - run: go vet ./...
       - run: go test ./... -timeout 5m
       - run: test -z "$(gofmt -l .)"
+      - run: go mod tidy && git diff --exit-code go.mod go.sum
