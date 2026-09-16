@@ -28,6 +28,8 @@ published checksums, and replace this binary in place.`,
 				return fmt.Errorf("update: %w", err)
 			}
 			switch {
+			case res.Updated && res.State == update.Newer:
+				fmt.Fprintf(out, "downgraded %s -> %s (%s)\n", res.Current, res.Latest, res.Path)
 			case res.Updated:
 				fmt.Fprintf(out, "updated %s -> %s (%s)\n", res.Current, res.Latest, res.Path)
 			case res.State == update.Current:
@@ -43,6 +45,6 @@ published checksums, and replace this binary in place.`,
 		},
 	}
 	cmd.Flags().BoolVar(&check, "check", false, "only report whether a newer release exists")
-	cmd.Flags().BoolVar(&force, "force", false, "reinstall even if already on the latest release")
+	cmd.Flags().BoolVar(&force, "force", false, "install the latest release even if this build is already current, newer, or not a release build")
 	return cmd
 }

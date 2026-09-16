@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/mod/module"
 	"golang.org/x/mod/semver"
 )
 
@@ -38,7 +39,7 @@ type Result struct {
 	Current string // version running before
 	Latest  string // latest release tag, without the leading v
 	State   State  // how Current compares with Latest
-	Updated bool   // false when already current or when only checking
+	Updated bool   // true only when a release was installed
 	Path    string // the binary that was replaced
 }
 
@@ -63,11 +64,18 @@ const (
 var ErrNotRelease = errors.New("not a release build")
 
 // compare works out State from two version strings. Build metadata such
-// as +dirty is ignored, as semver says it should be.
+// as +dirty is ignored, as semver says it should be. A pseudo-version
+// with no tag behind it (v0.0.0-<time>-<hash>, from a checkout that can
+// see no tags) is a dev build, not an old release, so it is Unknown.
 func compare(current, latest string) State {
 	c, l := "v"+strings.TrimPrefix(current, "v"), "v"+strings.TrimPrefix(latest, "v")
 	if !semver.IsValid(c) || !semver.IsValid(l) {
 		return Unknown
+	}
+	if module.IsPseudoVersion(c) {
+		if base, err := module.PseudoVersionBase(c); err != nil || base == "" || base == "v0.0.0" {
+			return Unknown
+		}
 	}
 	switch semver.Compare(c, l) {
 	case -1:

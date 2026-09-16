@@ -3,6 +3,9 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/thisisnic/goaltracker/internal/goal"
+	"github.com/thisisnic/goaltracker/internal/update"
+	"github.com/thisisnic/goaltracker/internal/version"
 )
 
 type runner struct {
@@ -318,4 +323,47 @@ func TestEnvPathDoesNotOwnItsDirectory(t *testing.T) {
 	if info.Mode().Perm() != 0o755 {
 		t.Errorf("directory chosen via GOALTRACKER_DB changed to %o", info.Mode().Perm())
 	}
+}
+
+// fakeLatest serves a minimal GitHub "latest release" answer with the given
+// tag and no assets, enough for update --check and the refusal paths.
+func fakeLatest(t *testing.T, tag string) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"tag_name":%q,"assets":[]}`, tag)
+	}))
+	t.Cleanup(srv.Close)
+	old := update.APIBase
+	update.APIBase = srv.URL
+	t.Cleanup(func() { update.APIBase = old })
+}
+
+func TestUpdateMessages(t *testing.T) {
+	r := newRunner(t)
+	fakeLatest(t, "v0.2.0")
+	cases := []struct {
+		current string
+		want    string
+	}{
+		{"0.1.0", "update available: 0.1.0 -> 0.2.0"},
+		{"0.2.0", "already the latest release, 0.2.0"},
+		{"0.3.0", "ahead of the latest release 0.2.0"},
+		{"dev", "not a release version"},
+	}
+	for _, c := range cases {
+		version.Version = c.current
+		out := r.run("", false, "update", "--check")
+		if !strings.Contains(out, c.want) {
+			t.Errorf("%q --check: %q, want %q", c.current, out, c.want)
+		}
+	}
+	version.Version = "dev"
+	if msg := r.run("", true, "update"); !strings.Contains(msg, "--force") {
+		t.Errorf("update on a dev build: %q", msg)
+	}
+	version.Version = "0.2.0"
+	if out := r.run("", false, "update"); !strings.Contains(out, "already the latest") {
+		t.Errorf("update when current: %q", out)
+	}
+	version.Version = ""
 }
