@@ -9,7 +9,7 @@ import (
 
 func openTest(t *testing.T) *Store {
 	t.Helper()
-	s, err := Open(filepath.Join(t.TempDir(), "nested", "lifeo.db"))
+	s, err := Open(filepath.Join(t.TempDir(), "nested", "goaltracker.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

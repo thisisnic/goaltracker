@@ -1,7 +1,7 @@
-// Package config reads lifeo's optional config file.
+// Package config reads goaltracker's optional config file.
 //
-// The file lives at $XDG_CONFIG_HOME/lifeo/config.toml, falling back to
-// ~/.config/lifeo/config.toml. Everything in it is optional; without it the
+// The file lives at $XDG_CONFIG_HOME/goaltracker/config.toml, falling back to
+// ~/.config/goaltracker/config.toml. Everything in it is optional; without it the
 // app works with no backups configured.
 package config
 
@@ -40,19 +40,19 @@ func (b Backup) Configured() bool { return b.Dir != "" && b.Recipient != "" }
 // Dir returns the config directory.
 func Dir() string {
 	if base := os.Getenv("XDG_CONFIG_HOME"); base != "" {
-		return filepath.Join(base, "lifeo")
+		return filepath.Join(base, "goaltracker")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "."
 	}
-	return filepath.Join(home, ".config", "lifeo")
+	return filepath.Join(home, ".config", "goaltracker")
 }
 
 // Path returns the config file path.
 func Path() string { return filepath.Join(Dir(), "config.toml") }
 
-// DefaultIdentityFile is where `lifeo key new` writes the private key.
+// DefaultIdentityFile is where `goaltracker key new` writes the private key.
 func DefaultIdentityFile() string { return filepath.Join(Dir(), "key.txt") }
 
 // Load reads the config file. A missing file yields an empty Config.
@@ -83,11 +83,11 @@ func ExpandHome(p string) string {
 	return p
 }
 
-// Example is a config file with every field, for `lifeo key new` to print.
+// Example is a config file with every field, for `goaltracker key new` to print.
 func Example(recipient, identityFile string) string {
 	return fmt.Sprintf(`[backup]
 # Where encrypted snapshots go. Make this a private git repo of your own.
-dir = "~/lifeo-data"
+dir = "~/goaltracker-data"
 # Your age public key. Snapshots are encrypted to it.
 recipient = %q
 # Your age private key file. Only restore reads it. Keep a copy somewhere
@@ -95,7 +95,7 @@ recipient = %q
 identity_file = %q
 # Write a snapshot every time the TUI exits.
 on_quit = true
-# Set to true once dir is a git clone with a remote, and lifeo will commit
+# Set to true once dir is a git clone with a remote, and goaltracker will commit
 # and push after each backup. Needs credentials that work without a prompt,
 # such as an SSH key loaded in an agent.
 git = false

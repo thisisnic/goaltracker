@@ -1,4 +1,4 @@
-// Package cli defines the lifeo command tree.
+// Package cli defines the goaltracker command tree.
 package cli
 
 import (
@@ -16,10 +16,10 @@ import (
 )
 
 // DefaultDBPath is where the database lives unless overridden by --db or
-// the LIFEO_DB environment variable: $XDG_DATA_HOME/lifeo/lifeo.db, falling
-// back to ~/.local/share/lifeo/lifeo.db.
+// the GOALTRACKER_DB environment variable: $XDG_DATA_HOME/goaltracker/goaltracker.db, falling
+// back to ~/.local/share/goaltracker/goaltracker.db.
 func DefaultDBPath() string {
-	if p := os.Getenv("LIFEO_DB"); p != "" {
+	if p := os.Getenv("GOALTRACKER_DB"); p != "" {
 		return p
 	}
 	base := os.Getenv("XDG_DATA_HOME")
@@ -30,7 +30,7 @@ func DefaultDBPath() string {
 		}
 		base = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(base, "lifeo", "lifeo.db")
+	return filepath.Join(base, "goaltracker", "goaltracker.db")
 }
 
 // New builds the root command.
@@ -38,20 +38,20 @@ func New() *cobra.Command {
 	var dbPath, cfgPath string
 	var private bool
 	root := &cobra.Command{
-		Use:   "lifeo",
+		Use:   "goaltracker",
 		Short: "A personal tracker for goals, plans and time",
-		Long: `lifeo is a local tracker for goals, plans and time.
+		Long: `goaltracker is a local tracker for goals, plans and time.
 
 Run it with no arguments to open the terminal UI. Subcommands give the same
 data a scriptable interface; add --json to any list or show command for
 machine-readable output.
 
 Somewhere you'd rather not have people read over your shoulder, start with
---private (or set LIFEO_PRIVATE=1) to hide the why, amounts and notes.
+--private (or set GOALTRACKER_PRIVATE=1) to hide the why, amounts and notes.
 Press x in the UI to toggle it.
 
 Backups are encrypted snapshots written to a folder you choose. Run
-lifeo key new once to set that up; with on_quit set in the config the
+goaltracker key new once to set that up; with on_quit set in the config the
 TUI writes one every time it exits.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -76,9 +76,9 @@ TUI writes one every time it exits.`,
 			return nil
 		},
 	}
-	root.PersistentFlags().StringVar(&dbPath, "db", DefaultDBPath(), "path to the SQLite database (env LIFEO_DB)")
+	root.PersistentFlags().StringVar(&dbPath, "db", DefaultDBPath(), "path to the SQLite database (env GOALTRACKER_DB)")
 	root.PersistentFlags().StringVar(&cfgPath, "config", config.Path(), "path to the config file")
-	root.Flags().BoolVar(&private, "private", envFailClosed("LIFEO_PRIVATE"), "start with the why, amounts and notes hidden; x toggles (env LIFEO_PRIVATE=1)")
+	root.Flags().BoolVar(&private, "private", envFailClosed("GOALTRACKER_PRIVATE"), "start with the why, amounts and notes hidden; x toggles (env GOALTRACKER_PRIVATE=1)")
 	root.AddCommand(goalCmd(&dbPath), keyCmd(), backupCmd(&dbPath, &cfgPath), restoreCmd(&dbPath, &cfgPath))
 	return root
 }
@@ -87,7 +87,7 @@ TUI writes one every time it exits.`,
 func Execute() {
 	root := New()
 	if err := root.ExecuteContext(context.Background()); err != nil {
-		fmt.Fprintln(os.Stderr, "lifeo:", err)
+		fmt.Fprintln(os.Stderr, "goaltracker:", err)
 		os.Exit(1)
 	}
 }

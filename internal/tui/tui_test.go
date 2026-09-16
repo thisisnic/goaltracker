@@ -17,7 +17,7 @@ import (
 
 func setup(t *testing.T) (*model, *goal.Store) {
 	t.Helper()
-	store, err := goal.Open(filepath.Join(t.TempDir(), "lifeo.db"))
+	store, err := goal.Open(filepath.Join(t.TempDir(), "goaltracker.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

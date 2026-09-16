@@ -143,7 +143,7 @@ func TestPushExpiringAfterCommitIsPushFailure(t *testing.T) {
 	if err := Push(context.Background(), e.opts.Dir, now); err != nil {
 		t.Errorf("retry: %v", err)
 	}
-	if !strings.Contains(remoteLog(t, remote), "lifeo backup") {
+	if !strings.Contains(remoteLog(t, remote), "goaltracker backup") {
 		t.Error("the landed commit was not pushed on retry")
 	}
 }

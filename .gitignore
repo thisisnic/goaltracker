@@ -2,4 +2,5 @@
 /.roborev/
 
 # build output
+/goaltracker
 /lifeo

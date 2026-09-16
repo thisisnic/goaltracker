@@ -1,7 +1,7 @@
 // Package backup writes and restores an encrypted copy of the database.
 //
 // The backup is a consistent copy of the SQLite file, encrypted with age to
-// the user's public key and written as a single file, lifeo.db.age, in a
+// the user's public key and written as a single file, goaltracker.db.age, in a
 // folder of their choosing, typically a private git repo. Each backup
 // replaces the previous file; git holds the history. Restoring needs the
 // matching private key.
@@ -26,11 +26,11 @@ import (
 )
 
 // FileName is the encrypted backup's name inside the backup folder.
-const FileName = "lifeo.db.age"
+const FileName = "goaltracker.db.age"
 
 // tmpPattern names the temporary file a backup is written to before being
 // renamed into place. It lives in the backup folder so the rename is atomic.
-const tmpPattern = ".lifeo-backup-*.tmp"
+const tmpPattern = ".goaltracker-backup-*.tmp"
 
 // sqliteMagic starts every SQLite database file.
 const sqliteMagic = "SQLite format 3\x00"
@@ -67,7 +67,7 @@ func Run(ctx context.Context, store *goal.Store, o Options) (Result, error) {
 	}
 	removeStaleTemps(o.Dir)
 
-	tmp, err := os.MkdirTemp("", "lifeo-snapshot-")
+	tmp, err := os.MkdirTemp("", "goaltracker-snapshot-")
 	if err != nil {
 		return Result{}, err
 	}

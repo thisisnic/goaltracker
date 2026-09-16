@@ -27,7 +27,7 @@ func newEnv(t *testing.T) *env {
 	root := t.TempDir()
 	e := &env{
 		root:    root,
-		dbPath:  filepath.Join(root, "data", "lifeo.db"),
+		dbPath:  filepath.Join(root, "data", "goaltracker.db"),
 		keyFile: filepath.Join(root, "cfg", "key.txt"),
 	}
 	recipient, err := NewKey(e.keyFile)
@@ -394,8 +394,8 @@ func TestStaleTempsOnlyWhenOld(t *testing.T) {
 	if err := os.MkdirAll(e.opts.Dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	fresh := filepath.Join(e.opts.Dir, ".lifeo-backup-fresh.tmp")
-	old := filepath.Join(e.opts.Dir, ".lifeo-backup-old.tmp")
+	fresh := filepath.Join(e.opts.Dir, ".goaltracker-backup-fresh.tmp")
+	old := filepath.Join(e.opts.Dir, ".goaltracker-backup-old.tmp")
 	if err := os.WriteFile(fresh, []byte("in use"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +428,7 @@ func TestMarkerPathDiffersPerDatabaseAndFolder(t *testing.T) {
 
 	// Different spellings of the same paths share a marker.
 	root := t.TempDir()
-	db := filepath.Join(root, "lifeo.db")
+	db := filepath.Join(root, "goaltracker.db")
 	if err := os.WriteFile(db, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestMarkerPathDiffersPerDatabaseAndFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	same := []string{db, "lifeo.db", "./lifeo.db", link, filepath.Join(root, "sub", "..", "lifeo.db")}
+	same := []string{db, "goaltracker.db", "./goaltracker.db", link, filepath.Join(root, "sub", "..", "goaltracker.db")}
 	for _, alt := range same[1:] {
 		if MarkerPath("/state", alt, root) != MarkerPath("/state", same[0], root) {
 			t.Errorf("%q gets a different marker from %q", alt, same[0])

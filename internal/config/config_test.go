@@ -17,12 +17,12 @@ func TestLoadExpandsHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	p := filepath.Join(t.TempDir(), "config.toml")
-	os.WriteFile(p, []byte(Example("age1abc", "~/.config/lifeo/key.txt")), 0o600)
+	os.WriteFile(p, []byte(Example("age1abc", "~/.config/goaltracker/key.txt")), 0o600)
 	c, err := Load(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Backup.Dir != filepath.Join(home, "lifeo-data") || c.Backup.IdentityFile != filepath.Join(home, ".config/lifeo/key.txt") {
+	if c.Backup.Dir != filepath.Join(home, "goaltracker-data") || c.Backup.IdentityFile != filepath.Join(home, ".config/goaltracker/key.txt") {
 		t.Errorf("paths not expanded: %+v", c.Backup)
 	}
 	if c.Backup.Recipient != "age1abc" || !c.Backup.OnQuit || c.Backup.Git || !c.Backup.Configured() {
@@ -40,7 +40,7 @@ func TestLoadBadTOML(t *testing.T) {
 
 func TestDirHonoursXDG(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/x")
-	if Dir() != "/x/lifeo" || Path() != "/x/lifeo/config.toml" {
+	if Dir() != "/x/goaltracker" || Path() != "/x/goaltracker/config.toml" {
 		t.Errorf("Dir=%s Path=%s", Dir(), Path())
 	}
 }

@@ -54,8 +54,8 @@ func goalAddCmd(dbPath *string) *cobra.Command {
 		Long: `Add a goal for a period. The level (year, quarter, month) comes from the
 period: 2026, 2026-Q3 or 2026-09. Give --target to make the goal numeric;
 otherwise it is a yes/no goal.`,
-		Example: `  lifeo goal add "hit the big number" --period 2026 --target 70000 --unit £ --why "..."
-  lifeo goal add "finish the garden" --period 2026-Q3 --parent 1`,
+		Example: `  goaltracker goal add "hit the big number" --period 2026 --target 70000 --unit £ --why "..."
+  goaltracker goal add "finish the garden" --period 2026-Q3 --parent 1`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := openStore(dbPath)
@@ -120,7 +120,7 @@ func goalListCmd(dbPath *string) *cobra.Command {
 				return writeJSON(cmd.OutOrStdout(), goals)
 			}
 			if len(goals) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "no goals yet. add one with: lifeo goal add \"...\" --period 2026")
+				fmt.Fprintln(cmd.OutOrStdout(), "no goals yet. add one with: goaltracker goal add \"...\" --period 2026")
 				return nil
 			}
 			printTree(cmd.OutOrStdout(), goals)
@@ -280,7 +280,7 @@ func goalProgressCmd(dbPath *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "progress ID VALUE",
 		Short:   "Record the running total of a numeric goal",
-		Example: `  lifeo goal progress 1 35000 --note "end of June"`,
+		Example: `  goaltracker goal progress 1 35000 --note "end of June"`,
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])

@@ -65,7 +65,7 @@ func TestPushCommitsAndPushes(t *testing.T) {
 	if err := Push(ctx, e.opts.Dir, now); err != nil {
 		t.Fatal(err)
 	}
-	if log := remoteLog(t, remote); !strings.Contains(log, "lifeo backup 2026-09-16 12:00 UTC") {
+	if log := remoteLog(t, remote); !strings.Contains(log, "goaltracker backup 2026-09-16 12:00 UTC") {
 		t.Errorf("remote log:\n%s", log)
 	}
 
@@ -73,7 +73,7 @@ func TestPushCommitsAndPushes(t *testing.T) {
 	if err := Push(ctx, e.opts.Dir, now); err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(remoteLog(t, remote), "lifeo backup"); n != 1 {
+	if n := strings.Count(remoteLog(t, remote), "goaltracker backup"); n != 1 {
 		t.Errorf("unchanged backup produced %d commits", n)
 	}
 
@@ -85,7 +85,7 @@ func TestPushCommitsAndPushes(t *testing.T) {
 	if err := Push(ctx, e.opts.Dir, now); err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(remoteLog(t, remote), "lifeo backup"); n != 2 {
+	if n := strings.Count(remoteLog(t, remote), "goaltracker backup"); n != 2 {
 		t.Errorf("changed backup: %d commits on remote", n)
 	}
 }
@@ -106,7 +106,7 @@ func TestPushFailureIsRetried(t *testing.T) {
 	}
 	// The commit exists locally.
 	out, _ := exec.Command("git", "-C", e.opts.Dir, "log", "--format=%s", "-1").Output()
-	if !strings.Contains(string(out), "lifeo backup") {
+	if !strings.Contains(string(out), "goaltracker backup") {
 		t.Errorf("commit not made locally: %s", out)
 	}
 
@@ -117,7 +117,7 @@ func TestPushFailureIsRetried(t *testing.T) {
 	if err := Push(ctx, e.opts.Dir, now); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(remoteLog(t, remote), "lifeo backup") {
+	if !strings.Contains(remoteLog(t, remote), "goaltracker backup") {
 		t.Error("earlier commit was not pushed on retry")
 	}
 
@@ -151,7 +151,7 @@ func TestPushSubfolderOfRepo(t *testing.T) {
 	if err := Push(context.Background(), e.opts.Dir, now); err != nil {
 		t.Fatalf("push from a subfolder of the repo: %v", err)
 	}
-	if !strings.Contains(remoteLog(t, remote), "lifeo backup") {
+	if !strings.Contains(remoteLog(t, remote), "goaltracker backup") {
 		t.Error("subfolder backup was not pushed")
 	}
 }
@@ -173,7 +173,7 @@ func TestPushFromFreshCloneSetsUpstream(t *testing.T) {
 	if err := Push(ctx, e.opts.Dir, now); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(remoteLog(t, remote), "lifeo backup") {
+	if !strings.Contains(remoteLog(t, remote), "goaltracker backup") {
 		t.Error("first push from a fresh clone did not reach the remote")
 	}
 	// Second time round the upstream is set and nothing is pending.

@@ -62,7 +62,7 @@ func backupCmd(dbPath, cfgPath *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "backup",
 		Short: "Write an encrypted copy of the database to the backup folder",
-		Long: `Write a consistent, encrypted copy of the database as lifeo.db.age in the
+		Long: `Write a consistent, encrypted copy of the database as goaltracker.db.age in the
 backup folder, replacing the previous one. Nothing is written if the
 database is unchanged since the last backup. The folder and key come from
 the config file unless given here.`,
@@ -79,7 +79,7 @@ the config file unless given here.`,
 				cfg.Backup.Recipient = recipient
 			}
 			if !cfg.Backup.Configured() {
-				return fmt.Errorf("no backup folder or key configured; run `lifeo key new` and follow its instructions, or pass --dir and --recipient")
+				return fmt.Errorf("no backup folder or key configured; run `goaltracker key new` and follow its instructions, or pass --dir and --recipient")
 			}
 			store, err := goal.Open(*dbPath)
 			if err != nil {
@@ -133,9 +133,9 @@ func restoreCmd(dbPath, cfgPath *string) *cobra.Command {
 		Use:   "restore [FILE]",
 		Short: "Replace the database with a decrypted backup",
 		Long: `Decrypt a backup with your private key and put it in place of the current
-database. With no FILE, the lifeo.db.age in the configured backup folder is
-used. The current database is kept next to it as lifeo.db.bak. Close any
-running lifeo first.`,
+database. With no FILE, the goaltracker.db.age in the configured backup folder is
+used. The current database is kept next to it as goaltracker.db.bak. Close any
+running goaltracker first.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load(*cfgPath)

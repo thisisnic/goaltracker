@@ -40,7 +40,7 @@ func Push(ctx context.Context, dir string, now time.Time) error {
 		// Nothing new to commit, but an earlier push may have failed.
 		return push(ctx, dir)
 	}
-	msg := "lifeo backup " + now.UTC().Format("2006-01-02 15:04 UTC")
+	msg := "goaltracker backup " + now.UTC().Format("2006-01-02 15:04 UTC")
 	if _, err := git(ctx, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", msg, "--", FileName); err != nil {
 		if cerr := ctx.Err(); cerr != nil {
 			// git may have written the commit and then been killed. If
@@ -117,7 +117,7 @@ func pushError(ctx context.Context, err error) error {
 	msg := err.Error()
 	switch {
 	case strings.Contains(msg, "non-fast-forward") || strings.Contains(msg, "fetch first"):
-		return fmt.Errorf("%w: the remote has newer commits, perhaps a backup from another machine; run git pull in the backup folder and pick which lifeo.db.age to keep: %v", ErrPushFailed, err)
+		return fmt.Errorf("%w: the remote has newer commits, perhaps a backup from another machine; run git pull in the backup folder and pick which goaltracker.db.age to keep: %v", ErrPushFailed, err)
 	case strings.Contains(msg, "does not appear to be a git repository") || strings.Contains(msg, "No such remote") || strings.Contains(msg, "'origin' does not appear"):
 		return fmt.Errorf("%w: the backup folder has no origin remote: %v", ErrPushFailed, err)
 	}

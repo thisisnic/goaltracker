@@ -18,10 +18,14 @@ type runner struct {
 
 func newRunner(t *testing.T) *runner {
 	t.Helper()
-	return &runner{t: t, db: filepath.Join(t.TempDir(), "lifeo.db")}
+	// Keep markers and any default paths out of the developer's real
+	// config and data directories.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	return &runner{t: t, db: filepath.Join(t.TempDir(), "goaltracker.db")}
 }
 
-// run executes lifeo with args and returns stdout. It fails the test on error
+// run executes goaltracker with args and returns stdout. It fails the test on error
 // unless wantErr is true, in which case it returns the error text.
 func (r *runner) run(stdin string, wantErr bool, args ...string) string {
 	r.t.Helper()
@@ -34,12 +38,12 @@ func (r *runner) run(stdin string, wantErr bool, args ...string) string {
 	err := root.Execute()
 	if wantErr {
 		if err == nil {
-			r.t.Fatalf("lifeo %v succeeded, want error", args)
+			r.t.Fatalf("goaltracker %v succeeded, want error", args)
 		}
 		return err.Error()
 	}
 	if err != nil {
-		r.t.Fatalf("lifeo %v: %v\n%s", args, err, out.String())
+		r.t.Fatalf("goaltracker %v: %v\n%s", args, err, out.String())
 	}
 	return out.String()
 }
@@ -168,9 +172,9 @@ func TestDeleteConfirmation(t *testing.T) {
 }
 
 func TestEnvFailClosed(t *testing.T) {
-	t.Setenv("LIFEO_PRIVATE", "") // so the test restores it afterwards
-	os.Unsetenv("LIFEO_PRIVATE")
-	if envFailClosed("LIFEO_PRIVATE") {
+	t.Setenv("GOALTRACKER_PRIVATE", "") // so the test restores it afterwards
+	os.Unsetenv("GOALTRACKER_PRIVATE")
+	if envFailClosed("GOALTRACKER_PRIVATE") {
 		t.Error("unset variable turned private mode on")
 	}
 	for val, want := range map[string]bool{
@@ -179,9 +183,9 @@ func TestEnvFailClosed(t *testing.T) {
 		"sure": true, // anything unrecognised fails closed
 		"  ":   true, // set, even if only spaces
 	} {
-		t.Setenv("LIFEO_PRIVATE", val)
-		if got := envFailClosed("LIFEO_PRIVATE"); got != want {
-			t.Errorf("LIFEO_PRIVATE=%q -> %v want %v", val, got, want)
+		t.Setenv("GOALTRACKER_PRIVATE", val)
+		if got := envFailClosed("GOALTRACKER_PRIVATE"); got != want {
+			t.Errorf("GOALTRACKER_PRIVATE=%q -> %v want %v", val, got, want)
 		}
 	}
 }
@@ -206,7 +210,7 @@ func TestKeyBackupRestore(t *testing.T) {
 	r.run("", true, "key", "new", "--out", keyFile) // refuses to overwrite
 
 	// Without config, backup explains what to do.
-	if msg := r.run("", true, "--config", cfgPath, "backup"); !strings.Contains(msg, "lifeo key new") {
+	if msg := r.run("", true, "--config", cfgPath, "backup"); !strings.Contains(msg, "goaltracker key new") {
 		t.Errorf("unconfigured backup error: %q", msg)
 	}
 
@@ -221,7 +225,7 @@ func TestKeyBackupRestore(t *testing.T) {
 		t.Fatalf("backup output: %q", out)
 	}
 	snapshot := strings.TrimSpace(strings.TrimPrefix(out, "backup: wrote "))
-	if snapshot != filepath.Join(dir, "lifeo.db.age") {
+	if snapshot != filepath.Join(dir, "goaltracker.db.age") {
 		t.Errorf("backup went to %q", snapshot)
 	}
 	if out := r.run("", false, "--config", cfgPath, "backup"); !strings.Contains(out, "no changes") {

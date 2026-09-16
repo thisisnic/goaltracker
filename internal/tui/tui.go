@@ -1,4 +1,4 @@
-// Package tui is the terminal UI for lifeo, built on Bubble Tea v2.
+// Package tui is the terminal UI for goaltracker, built on Bubble Tea v2.
 package tui
 
 import (
@@ -355,7 +355,7 @@ func (m *model) View() tea.View {
 	right := paneStyle.Width(detailW).Height(bodyH).Render(clipLines(m.viewDetail(detailW-4, bodyH-2), bodyH-2))
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("lifeo · goals"))
+	b.WriteString(titleStyle.Render("goaltracker · goals"))
 	if m.private {
 		b.WriteString(dimStyle.Render(" · private"))
 	}
@@ -388,7 +388,7 @@ func clipLines(s string, h int) string {
 
 func (m *model) viewList(w, h int) string {
 	if len(m.rows) == 0 {
-		return dimStyle.Render("no goals yet\n\nadd one from the shell:\n  lifeo goal add \"...\" --period 2026")
+		return dimStyle.Render("no goals yet\n\nadd one from the shell:\n  goaltracker goal add \"...\" --period 2026")
 	}
 	// keep the cursor in view
 	start := 0

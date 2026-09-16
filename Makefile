@@ -1,7 +1,7 @@
 .PHONY: build test vet run
 
 build:
-	go build -o lifeo ./cmd/lifeo
+	go build -o goaltracker ./cmd/goaltracker
 
 test:
 	go test ./...
@@ -10,4 +10,4 @@ vet:
 	go vet ./...
 
 run: build
-	./lifeo
+	./goaltracker
