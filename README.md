@@ -26,8 +26,8 @@ goaltracker · goals
 │                                                  ││ █████████████████░░░░░░░░░░░░░░░░░░░░░░░ │
 │                                                  ││                                          │
 │                                                  ││ history                                  │
-│                                                  ││   2026-09-16  120 km  end of March       │
-│                                                  ││   2026-09-16  215 km  end of May         │
+│                                                  ││   2026-03-31  120 km  end of March       │
+│                                                  ││   2026-05-31  215 km  end of May         │
 │                                                  ││                                          │
 ╰──────────────────────────────────────────────────╯╰──────────────────────────────────────────╯
 
@@ -159,13 +159,13 @@ goaltracker update            # install it
 | `goaltracker goal add STATEMENT --period P` | Add a goal; `--target`, `--unit`, `--why`, `--parent` |
 | `goaltracker goal list` | Show the goal tree; `--year`, `--level`, `--json` |
 | `goaltracker goal show ID` | One goal with its why and history; `--json` |
-| `goaltracker goal edit ID` | Change statement, why, period, target, unit or parent |
+| `goaltracker goal edit ID` | Change statement, why, target, unit or parent; `--no-parent` |
 | `goaltracker goal progress ID VALUE` | Record a new running total; `--note` |
 | `goaltracker goal mark ID hit\|missed\|clear` | Set the outcome at the end of a period |
-| `goaltracker goal delete ID` | Delete a goal and its history |
+| `goaltracker goal delete ID` | Delete a goal and its history; `--yes` |
 | `goaltracker key new` | Create the backup keypair and print the config |
-| `goaltracker backup` | Write an encrypted backup |
-| `goaltracker restore [FILE]` | Replace the database with a backup |
+| `goaltracker backup` | Write an encrypted backup; `--dir`, `--recipient` |
+| `goaltracker restore [FILE]` | Replace the database with a backup; `--identity`, `--yes` |
 | `goaltracker update` | Install the latest release; `--check`, `--force` |
 | `goaltracker version` | Print the version |
 
