@@ -83,10 +83,15 @@ time. Without it, commit and push the data repo however you like.
 The command used to be called `lifeo`. Nothing moves your data across on
 its own. Do this once, with neither lifeo nor goaltracker running, and
 before goaltracker has created anything of its own. If you have already
-run `goaltracker` or `goaltracker key new`, remove what it made first:
-`~/.local/share/goaltracker` and `~/.config/goaltracker` are safe to delete
-at that point, as they hold only an empty database or a key you have not
-used.
+run `goaltracker`, move what it made aside first rather than deleting it,
+in case you added goals or made a backup with a new key:
+
+```sh
+mv ~/.local/share/goaltracker ~/.local/share/goaltracker.new
+mv ~/.config/goaltracker ~/.config/goaltracker.new
+```
+
+Delete those `.new` folders only once you are sure nothing in them matters.
 
 ```sh
 mv ~/.config/lifeo ~/.config/goaltracker
