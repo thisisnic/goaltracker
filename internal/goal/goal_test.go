@@ -129,6 +129,25 @@ func TestTreeShowsLoopedGoals(t *testing.T) {
 	}
 }
 
+func TestTreeKeepsLoopedGoalsInPeriodOrder(t *testing.T) {
+	id := func(n int64) *int64 { return &n }
+	goals := []Goal{
+		{ID: 1, Period: "2026", ParentID: id(2)},
+		{ID: 2, Period: "2026", ParentID: id(1)},
+		{ID: 3, Period: "2027"},
+	}
+	rows := Flatten(Tree(goals))
+	var order []int64
+	for _, r := range rows {
+		if r.Depth == 0 {
+			order = append(order, r.Goal.ID)
+		}
+	}
+	if len(order) < 2 || order[len(order)-1] != 3 {
+		t.Errorf("2027 root should come last, got top-level order %v", order)
+	}
+}
+
 func TestYear(t *testing.T) {
 	for _, c := range []struct{ period, year string }{
 		{"2026", "2026"}, {"2026-Q3", "2026"}, {"2027-01", "2027"}, {"", ""},

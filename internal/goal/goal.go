@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -112,8 +113,6 @@ func ParseOutcome(s string) (Outcome, error) {
 	return "", fmt.Errorf("outcome %q: want hit, missed or clear", s)
 }
 
-// Percent is how far a numeric goal is towards its target, capped at 100.
-// It returns 0 for yes/no goals or a zero target.
 // Year is the calendar year the goal's period falls in.
 func (g Goal) Year() string {
 	if len(g.Period) < 4 {
@@ -129,6 +128,8 @@ func (g Goal) Done() bool {
 	return g.Outcome == Hit || (g.Kind == Numeric && g.Percent() >= 100)
 }
 
+// Percent is how far a numeric goal is towards its target, capped at 100.
+// It returns 0 for yes/no goals or a zero target.
 func (g Goal) Percent() float64 {
 	if g.Kind != Numeric || g.Target == 0 {
 		return 0
@@ -236,6 +237,9 @@ func Tree(goals []Goal) []*Node {
 			mark(n)
 		}
 	}
+	// Goals rescued from a loop were appended last; put every root back in
+	// period order so a list grouped by year stays in one piece.
+	sort.SliceStable(roots, func(i, j int) bool { return roots[i].Goal.Period < roots[j].Goal.Period })
 	return roots
 }
 
