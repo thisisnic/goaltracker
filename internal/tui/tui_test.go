@@ -657,3 +657,40 @@ func TestParentCandidates(t *testing.T) {
 		t.Error("add should offer every goal")
 	}
 }
+
+func TestYearSectionsAndDoneRows(t *testing.T) {
+	m, store := setup(t)
+	ctx := context.Background()
+	if _, err := store.Add(ctx, goal.NewGoal{Statement: "next year's thing", Period: "2027"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RecordProgress(ctx, 1, 70000, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	press(m, "j") // move off the done goal so it is not drawn selected
+	view := ansi.Strip(m.viewList(50, 20))
+	// Each year heads its own section, in order, with the child under its
+	// parent's year.
+	order := []string{"2026\n", "hit the big number", "finish the garden", "2027\n", "next year's thing"}
+	last := -1
+	for _, want := range order {
+		i := strings.Index(view, want)
+		if i < 0 {
+			t.Fatalf("list missing %q\n%s", want, view)
+		}
+		if i < last {
+			t.Errorf("%q out of order\n%s", want, view)
+		}
+		last = i
+	}
+	// The goal at 100% is dimmed as a whole row; the open one is not.
+	if got := m.viewRow(m.rows[0], false, 40); got != dimStyle.Render(ansi.Strip(got)) {
+		t.Errorf("done row not dimmed: %q", got)
+	}
+	if got := m.viewRow(m.rows[1], false, 40); got != ansi.Strip(got) {
+		t.Errorf("open row styled: %q", got)
+	}
+}

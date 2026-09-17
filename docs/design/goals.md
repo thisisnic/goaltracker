@@ -36,6 +36,15 @@ goals only.
 - At the end of a month or quarter, each goal is marked hit or missed, and the
   next batch is set. Nothing else is required.
 
+## Showing goals
+
+- The list is split into sections, one per year, each with a header. This
+  came from wanting "some visual distinction between my 2026 and 2027 goals".
+- A goal is completed when it is marked hit or its running total reaches 100%.
+  The owner does not tend to mark goals: "i never see a tick, i just see the
+  percentage at 100". A completed goal has its whole row dimmed.
+- How missed goals should look is left for later.
+
 ## Tasks
 
 - A task can be linked to a goal, or not. The link is loose and there to

@@ -128,3 +128,34 @@ func TestTreeShowsLoopedGoals(t *testing.T) {
 		}
 	}
 }
+
+func TestYear(t *testing.T) {
+	for _, c := range []struct{ period, year string }{
+		{"2026", "2026"}, {"2026-Q3", "2026"}, {"2027-01", "2027"}, {"", ""},
+	} {
+		if got := (Goal{Period: c.period}).Year(); got != c.year {
+			t.Errorf("Year(%q) = %q want %q", c.period, got, c.year)
+		}
+	}
+}
+
+func TestDone(t *testing.T) {
+	cases := []struct {
+		name string
+		g    Goal
+		want bool
+	}{
+		{"unmarked yes/no", Goal{Kind: YesNo}, false},
+		{"hit yes/no", Goal{Kind: YesNo, Outcome: Hit}, true},
+		{"missed", Goal{Kind: YesNo, Outcome: Missed}, false},
+		{"numeric under target", Goal{Kind: Numeric, Target: 100, Current: 99}, false},
+		{"numeric at target", Goal{Kind: Numeric, Target: 100, Current: 100}, true},
+		{"numeric over target", Goal{Kind: Numeric, Target: 100, Current: 150}, true},
+		{"numeric hit early", Goal{Kind: Numeric, Target: 100, Current: 10, Outcome: Hit}, true},
+	}
+	for _, c := range cases {
+		if got := c.g.Done(); got != c.want {
+			t.Errorf("%s: Done() = %v want %v", c.name, got, c.want)
+		}
+	}
+}

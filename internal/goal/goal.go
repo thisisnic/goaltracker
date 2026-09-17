@@ -114,6 +114,21 @@ func ParseOutcome(s string) (Outcome, error) {
 
 // Percent is how far a numeric goal is towards its target, capped at 100.
 // It returns 0 for yes/no goals or a zero target.
+// Year is the calendar year the goal's period falls in.
+func (g Goal) Year() string {
+	if len(g.Period) < 4 {
+		return g.Period
+	}
+	return g.Period[:4]
+}
+
+// Done reports whether the goal is finished: marked hit, or a numeric goal
+// whose running total has reached its target. The owner rarely marks goals,
+// so reaching 100% counts on its own.
+func (g Goal) Done() bool {
+	return g.Outcome == Hit || (g.Kind == Numeric && g.Percent() >= 100)
+}
+
 func (g Goal) Percent() float64 {
 	if g.Kind != Numeric || g.Target == 0 {
 		return 0

@@ -15,13 +15,13 @@ a git repo you own. One binary, one SQLite file, no account.
 ```text
 goaltracker · goals
 ╭──────────────────────────────────────────────────╮╭──────────────────────────────────────────╮
-│   2026     run 500 km                        43% ││ run 500 km                               │
-│   ✓ 2026-Q2  run a half marathon                 ││ period 2026 (year)   id #1               │
-│   2026     finish the garden                     ││                                          │
-│   ✓ 2026-04  plant the hedge                     ││ why                                      │
-│                                                  ││ Be able to say yes to a long day out     │
-│                                                  ││ without thinking about it.               │
-│                                                  ││                                          │
+│ 2026                                             ││ run 500 km                               │
+│   2026     run 500 km                        43% ││ period 2026 (year)   id #1               │
+│   ✓ 2026-Q2  run a half marathon                 ││                                          │
+│   2026     finish the garden                     ││ why                                      │
+│   ✓ 2026-04  plant the hedge                     ││ Be able to say yes to a long day out     │
+│ 2027                                             ││ without thinking about it.               │
+│   2027     swim 5 km in open water               ││                                          │
 │                                                  ││ progress 215 km / 500 km                 │
 │                                                  ││ █████████████████░░░░░░░░░░░░░░░░░░░░░░░ │
 │                                                  ││                                          │

@@ -340,6 +340,7 @@ var (
 	hitStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	missedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	labelStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	yearStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	errStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	paneStyle     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("8")).Padding(0, 1)
 )
@@ -390,42 +391,57 @@ func (m *model) viewList(w, h int) string {
 	if len(m.rows) == 0 {
 		return dimStyle.Render("no goals yet\n\nadd one from the shell:\n  goaltracker goal add \"...\" --period 2026")
 	}
-	// keep the cursor in view
-	start := 0
-	if m.cursor >= h {
-		start = m.cursor - h + 1
-	}
+	// Render every row, with a header where a top-level goal starts a new
+	// year, then show the window of h lines that holds the cursor. Children
+	// stay under their parent's year, whatever their own period says.
 	var lines []string
-	for i := start; i < len(m.rows) && i < start+h; i++ {
-		r := m.rows[i]
-		g := r.Goal
-		// Build the row as plain text first so width and truncation are
-		// measured without escape codes, then style it.
-		mark := "  "
-		switch g.Outcome {
-		case goal.Hit:
-			mark = "✓ "
-		case goal.Missed:
-			mark = "✗ "
+	cursorLine, year := 0, ""
+	for i, r := range m.rows {
+		if r.Depth == 0 && r.Goal.Year() != year {
+			year = r.Goal.Year()
+			lines = append(lines, yearStyle.Render(year))
 		}
-		right := ""
-		if g.Kind == goal.Numeric {
-			right = fmt.Sprintf("%3.0f%%", g.Percent())
+		if i == m.cursor {
+			cursorLine = len(lines)
 		}
-		indent := strings.Repeat("  ", r.Depth)
-		left := fmt.Sprintf("%s%s%-8s %s", indent, mark, g.Period, g.Statement)
-		line := fit(left, right, w)
-		switch {
-		case i == m.cursor:
-			line = selectedStyle.Render(line)
-		case g.Outcome == goal.Hit:
-			line = strings.Replace(line, "✓", hitStyle.Render("✓"), 1)
-		case g.Outcome == goal.Missed:
-			line = strings.Replace(line, "✗", missedStyle.Render("✗"), 1)
-		}
-		lines = append(lines, line)
+		lines = append(lines, m.viewRow(r, i == m.cursor, w))
 	}
-	return strings.Join(lines, "\n")
+	start := 0
+	if cursorLine >= h {
+		start = cursorLine - h + 1
+	}
+	return strings.Join(lines[start:min(len(lines), start+h)], "\n")
+}
+
+// viewRow renders one goal as a line of width w. A done goal is dimmed as a
+// whole; a missed one keeps its red cross.
+func (m *model) viewRow(r goal.Row, selected bool, w int) string {
+	g := r.Goal
+	// Build the row as plain text first so width and truncation are
+	// measured without escape codes, then style it.
+	mark := "  "
+	switch g.Outcome {
+	case goal.Hit:
+		mark = "✓ "
+	case goal.Missed:
+		mark = "✗ "
+	}
+	right := ""
+	if g.Kind == goal.Numeric {
+		right = fmt.Sprintf("%3.0f%%", g.Percent())
+	}
+	indent := strings.Repeat("  ", r.Depth)
+	left := fmt.Sprintf("%s%s%-8s %s", indent, mark, g.Period, g.Statement)
+	line := fit(left, right, w)
+	switch {
+	case selected:
+		return selectedStyle.Render(line)
+	case g.Done():
+		return dimStyle.Render(line)
+	case g.Outcome == goal.Missed:
+		return strings.Replace(line, "✗", missedStyle.Render("✗"), 1)
+	}
+	return line
 }
 
 // fit pads or truncates left so that right sits flush at width w. Both the
