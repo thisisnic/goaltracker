@@ -801,8 +801,8 @@ func TestStretchFieldValidatesAgainstTarget(t *testing.T) {
 	if err := m.form.form.GetFocusedField().Error(); err != nil {
 		t.Fatalf("target field blocked: %v", err)
 	}
-	typeText(m, "0") // 1500
-	press(m, "enter", "enter", "enter", "enter")
+	typeText(m, "0")                    // 1500
+	press(m, "enter", "enter", "enter") // unit, under, submit
 	if m.mode != modeBrowse || m.err != nil {
 		t.Fatalf("raising both did not save: mode=%v err=%v", m.mode, m.err)
 	}

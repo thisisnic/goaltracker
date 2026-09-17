@@ -93,8 +93,8 @@ func newGoalForm(existing *goal.Goal, candidates []goal.Row, defaultPeriod strin
 					// A blank target makes the goal yes/no and apply drops
 					// the stretch, so only check against a real target. The
 					// target field itself does not check the stretch, or
-					// raising both would trap the user there; a target
-					// raised past the stretch is caught by the store.
+					// raising both would trap the user there; moving on from
+					// the target always passes back through this check.
 					target, err := parseTarget(f.target)
 					if err != nil || target == 0 {
 						return nil
