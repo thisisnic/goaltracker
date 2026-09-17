@@ -369,7 +369,9 @@ func (s *Store) Update(ctx context.Context, id int64, e Edit) (Goal, error) {
 		g.Unit = strings.TrimSpace(*e.Unit)
 	}
 	if e.Notes != nil {
-		g.Notes = strings.TrimSpace(*e.Notes)
+		// Drop blank lines at either end but keep a leading indent, since
+		// notes are a free-text block where the first line may be indented.
+		g.Notes = strings.TrimLeft(strings.TrimRight(*e.Notes, " \t\r\n"), "\r\n")
 	}
 	if e.ParentID != nil {
 		if *e.ParentID != nil {

@@ -842,11 +842,11 @@ func TestNotesEditor(t *testing.T) {
 	if g.Notes != "first\nsecond" {
 		t.Errorf("Notes = %q", g.Notes)
 	}
-	view := ansi.Strip(m.View().Content)
-	for _, want := range []string{"notes", "first", "second"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("page missing %q:\n%s", want, view)
-		}
+	// The page, not the help line, shows the notes under their heading.
+	page := ansi.Strip(m.viewDetail(40, 25))
+	if i := strings.Index(page, "\nnotes\n"); i < 0 || !strings.HasPrefix(page[i+len("\nnotes\n"):], "first ") ||
+		!strings.Contains(page[i:], "\nsecond ") {
+		t.Errorf("page missing the notes:\n%s", page)
 	}
 	// Reopening shows the saved text; esc leaves it alone.
 	press(m, "n")
@@ -860,8 +860,8 @@ func TestNotesEditor(t *testing.T) {
 	}
 	// Private mode hides the notes and refuses to open the editor.
 	press(m, "x")
-	if view := ansi.Strip(m.View().Content); strings.Contains(view, "second") {
-		t.Errorf("private mode leaked the notes:\n%s", view)
+	if page := ansi.Strip(m.viewDetail(40, 25)); strings.Contains(page, "second") {
+		t.Errorf("private mode leaked the notes:\n%s", page)
 	}
 	press(m, "n")
 	if m.mode != modeBrowse || !strings.Contains(m.status, "private") {

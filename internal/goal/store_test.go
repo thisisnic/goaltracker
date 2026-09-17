@@ -400,8 +400,8 @@ func TestOpenAddsColumnsToOldDatabase(t *testing.T) {
 	if err != nil || g.Stretch != 0 || g.Notes != "" || g.Target != 10 {
 		t.Errorf("old goal after migrate: %v, %+v", err, g)
 	}
-	n := "kept"
-	if g, err = s.Update(context.Background(), 1, Edit{Notes: &n}); err != nil || g.Notes != "kept" {
+	n := "\n  - indented first line\nsecond\n\n"
+	if g, err = s.Update(context.Background(), 1, Edit{Notes: &n}); err != nil || g.Notes != "  - indented first line\nsecond" {
 		t.Errorf("notes on migrated goal: %v, %q", err, g.Notes)
 	}
 	// Opening again is a no-op.
