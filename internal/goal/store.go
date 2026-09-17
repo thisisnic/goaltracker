@@ -205,7 +205,7 @@ func (s *Store) Add(ctx context.Context, in NewGoal) (Goal, error) {
 	if in.Target < 0 {
 		return Goal{}, errors.New("target must not be negative")
 	}
-	if err := checkStretch(in.Target, in.Stretch); err != nil {
+	if err := CheckStretch(in.Target, in.Stretch); err != nil {
 		return Goal{}, err
 	}
 	kind := YesNo
@@ -355,7 +355,7 @@ func (s *Store) Update(ctx context.Context, id int64, e Edit) (Goal, error) {
 	if e.Stretch != nil {
 		g.Stretch = *e.Stretch
 	}
-	if err := checkStretch(g.Target, g.Stretch); err != nil {
+	if err := CheckStretch(g.Target, g.Stretch); err != nil {
 		return Goal{}, err
 	}
 	if e.Unit != nil {

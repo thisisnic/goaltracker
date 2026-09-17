@@ -754,4 +754,27 @@ func TestFormSavesStretch(t *testing.T) {
 	if m.form.stretch != "80000" {
 		t.Errorf("edit form stretch = %q", m.form.stretch)
 	}
+	// Blanking the target turns the goal yes/no and drops the stretch with it.
+	m.form.target = ""
+	if _, err := m.form.apply(m); err != nil {
+		t.Fatal(err)
+	}
+	g, _ = store.Get(context.Background(), 1)
+	if g.Kind != goal.YesNo || g.Stretch != 0 {
+		t.Errorf("after blanking target: kind=%s stretch=%v", g.Kind, g.Stretch)
+	}
+}
+
+func TestStretchFieldValidatesAgainstTarget(t *testing.T) {
+	m, _ := setup(t)
+	press(m, "a")
+	typeText(m, "x")
+	press(m, "enter", "enter", "enter") // to target
+	typeText(m, "100")
+	press(m, "enter") // to stretch
+	typeText(m, "50")
+	press(m, "enter")
+	if err := m.form.form.GetFocusedField().Error(); err == nil || !strings.Contains(err.Error(), "beyond the target") {
+		t.Errorf("stretch below target accepted: %v", err)
+	}
 }

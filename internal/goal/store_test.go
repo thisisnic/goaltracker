@@ -349,7 +349,7 @@ func TestStretch(t *testing.T) {
 	if g.Percent() != 100 || g.StretchPercent() < 91 || g.StretchPercent() > 92 {
 		t.Errorf("Percent = %v StretchPercent = %v", g.Percent(), g.StretchPercent())
 	}
-	// Lowering the target below the stretch is fine; below it is not.
+	// Raising the target to or beyond the stretch is rejected.
 	bad := 700.0
 	if _, err := s.Update(ctx, g.ID, Edit{Target: &bad}); err == nil {
 		t.Error("target above stretch accepted")

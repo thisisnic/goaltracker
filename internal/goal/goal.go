@@ -123,9 +123,10 @@ func (g Goal) StretchPercent() float64 {
 	return min(100, g.Current/g.Stretch*100)
 }
 
-// checkStretch validates a stretch against a target: it must be zero or
-// beyond the target, and a yes/no goal cannot have one.
-func checkStretch(target, stretch float64) error {
+// CheckStretch validates a stretch against a target: it must be zero or
+// beyond the target, and a yes/no goal cannot have one. Forms use it to
+// give the same message the store would.
+func CheckStretch(target, stretch float64) error {
 	switch {
 	case stretch < 0:
 		return errors.New("stretch must not be negative")

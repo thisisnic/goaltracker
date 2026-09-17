@@ -86,8 +86,12 @@ func newGoalForm(existing *goal.Goal, candidates []goal.Row, defaultPeriod strin
 				}),
 			huh.NewInput().Title("Stretch").Description("a number beyond the target, blank for none").Value(&f.stretch).
 				Validate(func(s string) error {
-					_, err := parseTarget(s)
-					return err
+					stretch, err := parseTarget(s)
+					if err != nil {
+						return err
+					}
+					target, _ := parseTarget(f.target) // a bad target is reported on its own field
+					return goal.CheckStretch(target, stretch)
 				}),
 			huh.NewInput().Title("Unit").Description("e.g. £ or kg").Value(&f.unit),
 			huh.NewSelect[int64]().Title("Under").Options(opts...).Value(&f.parent).Height(8),
@@ -152,6 +156,9 @@ func (f *goalForm) apply(m *model) (goal.Goal, error) {
 	stretch, err := parseTarget(f.stretch)
 	if err != nil {
 		return goal.Goal{}, err
+	}
+	if target == 0 {
+		stretch = 0 // blanking the target makes the goal yes/no; the stretch goes with it
 	}
 	var parent *int64
 	if f.parent > 0 {
