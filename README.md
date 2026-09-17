@@ -73,8 +73,8 @@ goaltracker goal list --json
 - **Numeric or yes/no** - A target with a unit, or a simple done or not.
   Units are placed sensibly: `£35,000`, `215 km`, `50%`.
 - **Stretch targets** - A numeric goal can carry a stretch figure beyond its
-  target. It stays out of the way until the target is reached, then the
-  goal's page shows it and the bar carries on towards it.
+  target. The goal's page lists it, and once the target is reached the bar
+  carries on towards it.
 - **Progress history** - Every running-total update is kept and dated.
 - **Private mode** - Hide the why, every amount and every note when someone
   might be reading over your shoulder. Press `x`, start with `--private`, or

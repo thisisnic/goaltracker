@@ -485,10 +485,13 @@ func (m *model) viewDetail(w, h int) string {
 	switch g.Kind {
 	case goal.Numeric:
 		prog = append(prog, cut(fmt.Sprintf("%s %s / %s", labelStyle.Render("progress"), amount(g.Current), amount(g.Target))))
-		// The stretch only comes into view once the target is reached;
-		// the bar then carries on past the target towards it.
+		// The stretch is always listed, but the bar only carries on past
+		// the target towards it once the target is reached.
+		if g.Stretch > 0 {
+			prog = append(prog, cut(labelStyle.Render("stretch ")+" "+amount(g.Stretch)))
+		}
 		if g.Stretch > 0 && g.Percent() >= 100 {
-			prog = append(prog, cut(labelStyle.Render("stretch ")+" "+amount(g.Stretch)), stretchBar(g, w))
+			prog = append(prog, stretchBar(g, w))
 		} else {
 			prog = append(prog, bar(g.Percent(), w))
 		}

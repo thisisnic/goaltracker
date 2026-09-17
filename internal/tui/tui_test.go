@@ -700,7 +700,7 @@ func TestYearSectionsAndDoneRows(t *testing.T) {
 	}
 }
 
-func TestStretchShowsOnlyAtTarget(t *testing.T) {
+func TestStretchBarOnlyAtTarget(t *testing.T) {
 	m, store := setup(t)
 	ctx := context.Background()
 	six := 90000.0
@@ -713,8 +713,13 @@ func TestStretchShowsOnlyAtTarget(t *testing.T) {
 	if err := m.reload(); err != nil {
 		t.Fatal(err)
 	}
-	if view := ansi.Strip(m.View().Content); strings.Contains(view, "stretch") {
-		t.Errorf("stretch shown before the target is reached:\n%s", view)
+	// Below the target the stretch is listed but the bar stops at the target.
+	raw := m.View().Content
+	if view := ansi.Strip(raw); !strings.Contains(view, "stretch  £90,000") {
+		t.Errorf("stretch missing below the target:\n%s", view)
+	}
+	if strings.Contains(raw, stretchStyle.Render("█")[:5]) {
+		t.Errorf("bar ran past the target before it was reached")
 	}
 	if _, err := store.RecordProgress(ctx, 1, 75000, ""); err != nil {
 		t.Fatal(err)
@@ -727,7 +732,7 @@ func TestStretchShowsOnlyAtTarget(t *testing.T) {
 		t.Errorf("stretch missing at 100%%:\n%s", view)
 	}
 	// The bar runs to the stretch: some of it filled, some still empty.
-	raw := m.View().Content
+	raw = m.View().Content
 	if !strings.Contains(raw, stretchStyle.Render("█")[:5]) || !strings.Contains(ansi.Strip(raw), "█░") {
 		t.Errorf("bar does not carry on past the target:\n%s", view)
 	}
