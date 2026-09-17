@@ -127,6 +127,10 @@ func press(m *model, keys ...string) {
 			msg = tea.KeyPressMsg{Code: tea.KeyEnter}
 		case "esc":
 			msg = tea.KeyPressMsg{Code: tea.KeyEscape}
+		case "backspace":
+			msg = tea.KeyPressMsg{Code: tea.KeyBackspace}
+		case "shift+tab":
+			msg = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
 		default:
 			r := []rune(k)[0]
 			msg = tea.KeyPressMsg{Code: r, Text: k}
@@ -754,10 +758,16 @@ func TestFormSavesStretch(t *testing.T) {
 	if m.form.stretch != "80000" {
 		t.Errorf("edit form stretch = %q", m.form.stretch)
 	}
-	// Blanking the target turns the goal yes/no and drops the stretch with it.
-	m.form.target = ""
-	if _, err := m.form.apply(m); err != nil {
-		t.Fatal(err)
+	// Blanking the target in the form turns the goal yes/no and drops the
+	// stretch with it; the prefilled Stretch field must not block the way.
+	press(m, "enter", "enter", "enter") // to target
+	press(m, "backspace", "backspace", "backspace", "backspace", "backspace")
+	if m.form.target != "" {
+		t.Fatalf("target not cleared: %q", m.form.target)
+	}
+	press(m, "enter", "enter", "enter", "enter") // stretch, unit, under, submit
+	if m.mode != modeBrowse || m.err != nil {
+		t.Fatalf("blank-target edit did not save: mode=%v err=%v", m.mode, m.err)
 	}
 	g, _ = store.Get(context.Background(), 1)
 	if g.Kind != goal.YesNo || g.Stretch != 0 {
@@ -775,6 +785,20 @@ func TestStretchFieldValidatesAgainstTarget(t *testing.T) {
 	typeText(m, "50")
 	press(m, "enter")
 	if err := m.form.form.GetFocusedField().Error(); err == nil || !strings.Contains(err.Error(), "beyond the target") {
-		t.Errorf("stretch below target accepted: %v", err)
+		t.Fatalf("stretch below target accepted: %v", err)
+	}
+	press(m, "backspace", "backspace")
+	typeText(m, "150")
+	press(m, "enter") // to unit
+	if err := m.form.form.GetFocusedField().Error(); err != nil {
+		t.Fatalf("valid stretch rejected: %v", err)
+	}
+	// Going back and raising the target past the stretch is caught on the
+	// target field.
+	press(m, "shift+tab", "shift+tab") // unit -> stretch -> target
+	typeText(m, "0")                   // 1000
+	press(m, "enter")
+	if err := m.form.form.GetFocusedField().Error(); err == nil || !strings.Contains(err.Error(), "beyond the target") {
+		t.Errorf("target raised past the stretch accepted: %v", err)
 	}
 }
