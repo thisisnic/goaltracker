@@ -156,14 +156,14 @@ goaltracker update            # install it
 | Command | What it does |
 | --- | --- |
 | `goaltracker` | Open the terminal UI |
-| `goaltracker goal add STATEMENT --period P` | Add a goal; `--target`, `--unit`, `--why`, `--parent` |
+| `goaltracker goal add STATEMENT --period P` | Add a goal; `--target`, `--unit`, `--why`, `--parent`, `--json` |
 | `goaltracker goal list` | Show the goal tree; `--year`, `--level`, `--json` |
 | `goaltracker goal show ID` | One goal with its why and history; `--json` |
 | `goaltracker goal edit ID` | Change statement, why, target, unit or parent; `--no-parent` |
 | `goaltracker goal progress ID VALUE` | Record a new running total; `--note` |
 | `goaltracker goal mark ID hit\|missed\|clear` | Set the outcome at the end of a period |
 | `goaltracker goal delete ID` | Delete a goal and its history; `--yes` |
-| `goaltracker key new` | Create the backup keypair and print the config |
+| `goaltracker key new` | Create the backup keypair and print the config; `--out` |
 | `goaltracker backup` | Write an encrypted backup; `--dir`, `--recipient` |
 | `goaltracker restore [FILE]` | Replace the database with a backup; `--identity`, `--yes` |
 | `goaltracker update` | Install the latest release; `--check`, `--force` |
