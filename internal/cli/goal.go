@@ -215,6 +215,12 @@ func goalShowCmd(dbPath *string) *cobra.Command {
 			if g.Outcome != goal.Unmarked {
 				fmt.Fprintf(out, "outcome:  %s\n", g.Outcome)
 			}
+			if g.Notes != "" {
+				fmt.Fprintln(out, "notes:")
+				for _, l := range strings.Split(g.Notes, "\n") {
+					fmt.Fprintf(out, "  %s\n", l)
+				}
+			}
 			if len(hist) > 0 {
 				fmt.Fprintln(out, "history:")
 				for _, p := range hist {
@@ -233,13 +239,13 @@ func goalShowCmd(dbPath *string) *cobra.Command {
 }
 
 func goalEditCmd(dbPath *string) *cobra.Command {
-	var statement, why, unit string
+	var statement, why, unit, notes string
 	var target, stretch float64
 	var parent int64
 	var clearParent bool
 	cmd := &cobra.Command{
 		Use:   "edit ID",
-		Short: "Change a goal's statement, why, target, stretch, unit or parent",
+		Short: "Change a goal's statement, why, target, stretch, unit, notes or parent",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
@@ -261,6 +267,9 @@ func goalEditCmd(dbPath *string) *cobra.Command {
 			}
 			if cmd.Flags().Changed("unit") {
 				e.Unit = &unit
+			}
+			if cmd.Flags().Changed("notes") {
+				e.Notes = &notes
 			}
 			if clearParent {
 				var none *int64
@@ -290,6 +299,7 @@ func goalEditCmd(dbPath *string) *cobra.Command {
 	cmd.Flags().Float64Var(&target, "target", 0, "new target; 0 makes the goal yes/no")
 	cmd.Flags().Float64Var(&stretch, "stretch", 0, "new stretch target; 0 removes it")
 	cmd.Flags().StringVar(&unit, "unit", "", "new unit, e.g. £ or kg")
+	cmd.Flags().StringVar(&notes, "notes", "", "replace the notes; empty clears them")
 	cmd.Flags().Int64Var(&parent, "parent", 0, "new parent goal id")
 	cmd.Flags().BoolVar(&clearParent, "no-parent", false, "remove the parent link")
 	return cmd

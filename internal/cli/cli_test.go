@@ -400,3 +400,24 @@ func TestStretchFlags(t *testing.T) {
 		t.Errorf("stretch not cleared:\n%s", out)
 	}
 }
+
+func TestNotesFlag(t *testing.T) {
+	r := newRunner(t)
+	r.run("", false, "goal", "add", "x", "--period", "2026")
+	r.run("", false, "goal", "edit", "1", "--notes", "first line\nsecond line")
+	out := r.run("", false, "goal", "show", "1")
+	if !strings.Contains(out, "notes:\n  first line\n  second line\n") {
+		t.Errorf("show:\n%s", out)
+	}
+	var g goal.Goal
+	if err := json.Unmarshal([]byte(r.run("", false, "goal", "show", "1", "--json")), &g); err != nil {
+		t.Fatal(err)
+	}
+	if g.Notes != "first line\nsecond line" {
+		t.Errorf("json notes = %q", g.Notes)
+	}
+	r.run("", false, "goal", "edit", "1", "--notes", "")
+	if out := r.run("", false, "goal", "show", "1"); strings.Contains(out, "notes") {
+		t.Errorf("notes not cleared:\n%s", out)
+	}
+}

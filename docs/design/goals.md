@@ -38,6 +38,13 @@ goals only.
   have no measure of their own. They are judged by whether their
   quarterly goals get hit, and by feel.
 
+## Notes
+
+- Each goal has a notes section: one block of free text, not dated entries.
+- It is edited from its own key on the goal's page, separate from the add and
+  edit form, so longer notes have room.
+- Notes are hidden in private mode along with the why and the amounts.
+
 ## End of period
 
 - At the end of a month or quarter, each goal is marked hit or missed, and the

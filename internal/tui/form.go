@@ -138,6 +138,8 @@ func parseTarget(s string) (float64, error) {
 
 func (f *goalForm) Init() tea.Cmd { return f.form.Init() }
 
+func (f *goalForm) help() string { return "enter next · shift+tab back · esc cancel" }
+
 // Update feeds a message to the form and reports whether it has finished.
 func (f *goalForm) Update(msg tea.Msg) (done bool, submitted bool, cmd tea.Cmd) {
 	m, cmd := f.form.Update(msg)

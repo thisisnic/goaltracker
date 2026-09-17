@@ -131,6 +131,8 @@ func press(m *model, keys ...string) {
 			msg = tea.KeyPressMsg{Code: tea.KeyBackspace}
 		case "shift+tab":
 			msg = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+		case "ctrl+s":
+			msg = tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 		default:
 			r := []rune(k)[0]
 			msg = tea.KeyPressMsg{Code: r, Text: k}
@@ -345,7 +347,7 @@ func TestFormValidationBlocksSubmit(t *testing.T) {
 func TestEditViaForm(t *testing.T) {
 	m, store := setup(t)
 	press(m, "j", "e")
-	if m.form == nil || m.form.editID != 2 || m.form.statement != "finish the garden" || m.form.period != "2026-Q3" || m.form.parent != 1 {
+	if m.form == nil || m.form.(*goalForm).editID != 2 || m.form.(*goalForm).statement != "finish the garden" || m.form.(*goalForm).period != "2026-Q3" || m.form.(*goalForm).parent != 1 {
 		t.Fatalf("edit form not prefilled: %+v", m.form)
 	}
 	typeText(m, " in september")
@@ -611,12 +613,12 @@ func TestFormOpensAtRightSizeOnNarrowTerminal(t *testing.T) {
 	// the form must be sized with the form's footer, i.e. after the mode
 	// switch. Sending the size again yields the same numbers.
 	wantW, wantH := m.formSize()
-	if m.form.width != wantW || m.form.height != wantH {
-		t.Errorf("form opened at %dx%d, want %dx%d", m.form.width, m.form.height, wantW, wantH)
+	if m.form.(*goalForm).width != wantW || m.form.(*goalForm).height != wantH {
+		t.Errorf("form opened at %dx%d, want %dx%d", m.form.(*goalForm).width, m.form.(*goalForm).height, wantW, wantH)
 	}
 	deliver(m, tea.WindowSizeMsg{Width: 50, Height: 30})
-	if m.form.width != wantW || m.form.height != wantH {
-		t.Errorf("form resized to %dx%d on an unchanged window, want %dx%d", m.form.width, m.form.height, wantW, wantH)
+	if m.form.(*goalForm).width != wantW || m.form.(*goalForm).height != wantH {
+		t.Errorf("form resized to %dx%d on an unchanged window, want %dx%d", m.form.(*goalForm).width, m.form.(*goalForm).height, wantW, wantH)
 	}
 	if h := lipgloss.Height(m.View().Content); h > 30 {
 		t.Errorf("form view is %d lines tall for a 30-line terminal", h)
@@ -746,7 +748,7 @@ func TestStretchBarOnlyAtTarget(t *testing.T) {
 func TestFormSavesStretch(t *testing.T) {
 	m, store := setup(t)
 	press(m, "e")
-	f := m.form
+	f := m.form.(*goalForm)
 	f.stretch = "80000"
 	if _, err := f.apply(m); err != nil {
 		t.Fatal(err)
@@ -760,15 +762,15 @@ func TestFormSavesStretch(t *testing.T) {
 		t.Fatal(err)
 	}
 	press(m, "e")
-	if m.form.stretch != "80000" {
-		t.Errorf("edit form stretch = %q", m.form.stretch)
+	if m.form.(*goalForm).stretch != "80000" {
+		t.Errorf("edit form stretch = %q", m.form.(*goalForm).stretch)
 	}
 	// Blanking the target in the form turns the goal yes/no and drops the
 	// stretch with it; the prefilled Stretch field must not block the way.
 	press(m, "enter", "enter", "enter") // to target
 	press(m, "backspace", "backspace", "backspace", "backspace", "backspace")
-	if m.form.target != "" {
-		t.Fatalf("target not cleared: %q", m.form.target)
+	if m.form.(*goalForm).target != "" {
+		t.Fatalf("target not cleared: %q", m.form.(*goalForm).target)
 	}
 	press(m, "enter", "enter", "enter", "enter") // stretch, unit, under, submit
 	if m.mode != modeBrowse || m.err != nil {
@@ -789,13 +791,13 @@ func TestStretchFieldValidatesAgainstTarget(t *testing.T) {
 	press(m, "enter") // to stretch
 	typeText(m, "50")
 	press(m, "enter")
-	if err := m.form.form.GetFocusedField().Error(); err == nil || !strings.Contains(err.Error(), "beyond the target") {
+	if err := m.form.(*goalForm).form.GetFocusedField().Error(); err == nil || !strings.Contains(err.Error(), "beyond the target") {
 		t.Fatalf("stretch below target accepted: %v", err)
 	}
 	press(m, "backspace", "backspace")
 	typeText(m, "150")
 	press(m, "enter") // to unit
-	if err := m.form.form.GetFocusedField().Error(); err != nil {
+	if err := m.form.(*goalForm).form.GetFocusedField().Error(); err != nil {
 		t.Fatalf("valid stretch rejected: %v", err)
 	}
 	// Raising the target past the stretch is not caught on the target
@@ -803,7 +805,7 @@ func TestStretchFieldValidatesAgainstTarget(t *testing.T) {
 	press(m, "shift+tab", "shift+tab") // unit -> stretch -> target
 	typeText(m, "0")                   // 1000
 	press(m, "enter")                  // to stretch
-	if err := m.form.form.GetFocusedField().Error(); err != nil {
+	if err := m.form.(*goalForm).form.GetFocusedField().Error(); err != nil {
 		t.Fatalf("target field blocked: %v", err)
 	}
 	typeText(m, "0")                    // 1500
@@ -814,5 +816,55 @@ func TestStretchFieldValidatesAgainstTarget(t *testing.T) {
 	g, _ := m.selected()
 	if g.Target != 1000 || g.Stretch != 1500 {
 		t.Errorf("saved target=%v stretch=%v", g.Target, g.Stretch)
+	}
+}
+
+func TestNotesEditor(t *testing.T) {
+	m, store := setup(t)
+	press(m, "n")
+	if m.mode != modeForm || m.form == nil {
+		t.Fatalf("n did not open the notes editor: mode=%v", m.mode)
+	}
+	if !strings.Contains(m.helpLine(), "ctrl+s save") {
+		t.Errorf("help = %q", m.helpLine())
+	}
+	typeText(m, "first")
+	press(m, "enter") // a new line, not a submit
+	if m.mode != modeForm {
+		t.Fatal("enter closed the notes editor")
+	}
+	typeText(m, "second")
+	press(m, "ctrl+s")
+	if m.mode != modeBrowse || m.err != nil {
+		t.Fatalf("ctrl+s did not save: mode=%v err=%v", m.mode, m.err)
+	}
+	g, _ := store.Get(context.Background(), 1)
+	if g.Notes != "first\nsecond" {
+		t.Errorf("Notes = %q", g.Notes)
+	}
+	view := ansi.Strip(m.View().Content)
+	for _, want := range []string{"notes", "first", "second"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("page missing %q:\n%s", want, view)
+		}
+	}
+	// Reopening shows the saved text; esc leaves it alone.
+	press(m, "n")
+	if m.form.(*notesForm).notes != "first\nsecond" {
+		t.Errorf("editor not prefilled: %q", m.form.(*notesForm).notes)
+	}
+	typeText(m, "x")
+	press(m, "esc")
+	if g, _ := store.Get(context.Background(), 1); g.Notes != "first\nsecond" || m.mode != modeBrowse {
+		t.Errorf("esc changed the notes: %q mode=%v", g.Notes, m.mode)
+	}
+	// Private mode hides the notes and refuses to open the editor.
+	press(m, "x")
+	if view := ansi.Strip(m.View().Content); strings.Contains(view, "second") {
+		t.Errorf("private mode leaked the notes:\n%s", view)
+	}
+	press(m, "n")
+	if m.mode != modeBrowse || !strings.Contains(m.status, "private") {
+		t.Errorf("notes opened in private mode: mode=%v status=%q", m.mode, m.status)
 	}
 }

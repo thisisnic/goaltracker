@@ -370,16 +370,19 @@ func TestStretch(t *testing.T) {
 	}
 }
 
-func TestOpenAddsStretchToOldDatabase(t *testing.T) {
+func TestOpenAddsColumnsToOldDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "goaltracker.db")
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The v0.2.0 schema, without the stretch column.
-	old := strings.Replace(schema, "\tstretch    REAL NOT NULL DEFAULT 0,\n", "", 1)
-	if old == schema {
-		t.Fatal("could not strip the stretch column from the schema")
+	old := strings.NewReplacer(
+		"\tstretch    REAL NOT NULL DEFAULT 0,\n", "",
+		"\tnotes      TEXT NOT NULL DEFAULT '',\n", "",
+	).Replace(schema)
+	if strings.Contains(old, "stretch") || strings.Contains(old, "notes") {
+		t.Fatal("could not strip the new columns from the schema")
 	}
 	if _, err := db.Exec(old); err != nil {
 		t.Fatal(err)
@@ -394,8 +397,12 @@ func TestOpenAddsStretchToOldDatabase(t *testing.T) {
 	}
 	defer s.Close()
 	g, err := s.Get(context.Background(), 1)
-	if err != nil || g.Stretch != 0 || g.Target != 10 {
+	if err != nil || g.Stretch != 0 || g.Notes != "" || g.Target != 10 {
 		t.Errorf("old goal after migrate: %v, %+v", err, g)
+	}
+	n := "kept"
+	if g, err = s.Update(context.Background(), 1, Edit{Notes: &n}); err != nil || g.Notes != "kept" {
+		t.Errorf("notes on migrated goal: %v, %q", err, g.Notes)
 	}
 	// Opening again is a no-op.
 	s.Close()

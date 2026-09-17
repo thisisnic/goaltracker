@@ -59,6 +59,7 @@ type Goal struct {
 	Unit      string    `json:"unit,omitempty"`
 	Current   float64   `json:"current,omitempty"`
 	Outcome   Outcome   `json:"outcome,omitempty"`
+	Notes     string    `json:"notes,omitempty"` // free text, edited on its own
 	CreatedAt time.Time `json:"created_at"`
 }
 

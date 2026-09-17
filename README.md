@@ -76,7 +76,9 @@ goaltracker goal list --json
   target. The goal's page lists it, and once the target is reached the bar
   carries on towards it.
 - **Progress history** - Every running-total update is kept and dated.
-- **Private mode** - Hide the why, every amount and every note when someone
+- **Notes** - A free-text block on each goal, edited in place with `n`. Enter
+  starts a new line, ctrl+s saves, ctrl+e opens your `$EDITOR`.
+- **Private mode** - Hide the why, the notes and every amount when someone
   might be reading over your shoulder. Press `x`, start with `--private`, or
   set `GOALTRACKER_PRIVATE=1`.
 - **Encrypted backups** - One age-encrypted file, written to a folder you
@@ -162,7 +164,7 @@ goaltracker update            # install it
 | `goaltracker goal add STATEMENT --period P` | Add a goal; `--target`, `--stretch`, `--unit`, `--why`, `--parent`, `--json` |
 | `goaltracker goal list` | Show the goal tree; `--year`, `--level`, `--json` |
 | `goaltracker goal show ID` | One goal with its why and history; `--json` |
-| `goaltracker goal edit ID` | Change statement, why, target, stretch, unit or parent; `--no-parent` |
+| `goaltracker goal edit ID` | Change statement, why, target, stretch, unit, notes or parent; `--no-parent` |
 | `goaltracker goal progress ID VALUE` | Record a new running total; `--note` |
 | `goaltracker goal mark ID hit\|missed\|clear` | Set the outcome at the end of a period |
 | `goaltracker goal delete ID` | Delete a goal and its history; `--yes` |

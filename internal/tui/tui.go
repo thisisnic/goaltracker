@@ -42,6 +42,18 @@ const (
 	modeForm
 )
 
+// editor is a form shown in place of the two panes: the goal form or the
+// notes editor. apply writes its result to the store.
+type editor interface {
+	Init() tea.Cmd
+	Update(tea.Msg) (done bool, submitted bool, cmd tea.Cmd)
+	View() string
+	apply(*model) (goal.Goal, error)
+	filtering() bool
+	resize(width, height int)
+	help() string
+}
+
 type model struct {
 	ctx   context.Context
 	store *goal.Store
@@ -54,7 +66,7 @@ type model struct {
 
 	mode    mode
 	private bool // hide the why, amounts and notes from onlookers
-	form    *goalForm
+	form    editor
 	input   textinput.Model
 	status  string
 	err     error
@@ -150,10 +162,16 @@ func (m *model) openForm(existing *goal.Goal) tea.Cmd {
 	if existing != nil {
 		id = existing.ID
 	}
-	m.mode = modeForm // before formSize, which measures the form's help line
-	w, h := m.formSize()
-	m.form = newGoalForm(existing, parentCandidates(m.rows, id), time.Now().Format("2006"), w, h)
-	return m.form.Init()
+	return m.openEditor(newGoalForm(existing, parentCandidates(m.rows, id), time.Now().Format("2006"), 0, 0))
+}
+
+// openEditor shows an editor in place of the panes. It is sized once it is
+// in place, since formSize measures the editor's own help line.
+func (m *model) openEditor(e editor) tea.Cmd {
+	m.mode = modeForm
+	m.form = e
+	e.resize(m.formSize())
+	return e.Init()
 }
 
 func (m *model) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -222,7 +240,7 @@ func (m *model) updateBrowse(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "x":
 		m.private = !m.private
 		if m.private {
-			m.status = "private: why, amounts and notes hidden"
+			m.status = "private: why, notes and amounts hidden"
 		} else {
 			m.status = "private off"
 		}
@@ -250,6 +268,14 @@ func (m *model) updateBrowse(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "a":
 		return m, m.openForm(nil)
+	case "n":
+		if m.private {
+			m.status = "notes are hidden in private mode: press x to leave it first"
+			return m, nil
+		}
+		if g, ok := m.selected(); ok {
+			return m, m.openEditor(newNotesForm(g, 0, 0))
+		}
 	case "e":
 		if m.private {
 			m.status = "editing shows the why and target: press x to leave private mode first"
@@ -521,6 +547,8 @@ func (m *model) viewDetail(w, h int) string {
 	// Space left for why and history after the fixed parts.
 	free := h - len(head) - len(prog) - len(input)
 
+	// The why and the notes are one block of text for the space-sharing
+	// below: both give way from the bottom when history needs room.
 	var why []string
 	if g.Why != "" && free > 0 {
 		why = append(why, "", labelStyle.Render("why"))
@@ -528,6 +556,14 @@ func (m *model) viewDetail(w, h int) string {
 			why = append(why, dimStyle.Render(hidden))
 		} else {
 			why = append(why, strings.Split(wrap.Render(g.Why), "\n")...)
+		}
+	}
+	if g.Notes != "" && free > 0 {
+		why = append(why, "", labelStyle.Render("notes"))
+		if m.private {
+			why = append(why, dimStyle.Render(hidden))
+		} else {
+			why = append(why, strings.Split(wrap.Render(g.Notes), "\n")...)
 		}
 	}
 	var hist []string
@@ -657,8 +693,8 @@ func (m *model) viewStatus() string {
 }
 
 func (m *model) helpLine() string {
-	if m.mode == modeForm {
-		return "enter next · shift+tab back · esc cancel"
+	if m.mode == modeForm && m.form != nil {
+		return m.form.help()
 	}
-	return "a add · e edit · p progress · h hit · m missed · c clear · d delete · x private · j/k move · q quit"
+	return "a add · e edit · n notes · p progress · h hit · m missed · c clear · d delete · x private · j/k move · q quit"
 }
