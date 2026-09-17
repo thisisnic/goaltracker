@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS goals (
 	parent_id  INTEGER REFERENCES goals(id) ON DELETE SET NULL,
 	kind       TEXT NOT NULL CHECK (kind IN ('numeric','yesno')),
 	target     REAL NOT NULL DEFAULT 0,
+	stretch    REAL NOT NULL DEFAULT 0,
 	unit       TEXT NOT NULL DEFAULT '',
 	outcome    TEXT NOT NULL DEFAULT '' CHECK (outcome IN ('','hit','missed')),
 	created_at TEXT NOT NULL
@@ -102,7 +103,39 @@ func Open(path string, opts ...Option) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	// Databases from before v0.3.0 have no stretch column.
+	if err := addColumn(db, "goals", "stretch", "REAL NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+// addColumn adds a column to a table created by an earlier version, and
+// does nothing when it is already there.
+func addColumn(db *sql.DB, table, column, def string) error {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, def))
+	return err
 }
 
 // restrict tightens modes left loose by earlier versions. The database and
@@ -155,6 +188,7 @@ type NewGoal struct {
 	Period    string
 	ParentID  *int64
 	Target    float64 // > 0 makes the goal numeric
+	Stretch   float64 // optional, beyond Target
 	Unit      string
 }
 
@@ -171,6 +205,9 @@ func (s *Store) Add(ctx context.Context, in NewGoal) (Goal, error) {
 	if in.Target < 0 {
 		return Goal{}, errors.New("target must not be negative")
 	}
+	if err := checkStretch(in.Target, in.Stretch); err != nil {
+		return Goal{}, err
+	}
 	kind := YesNo
 	if in.Target > 0 {
 		kind = Numeric
@@ -182,10 +219,10 @@ func (s *Store) Add(ctx context.Context, in NewGoal) (Goal, error) {
 	}
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO goals (statement, why, level, period, parent_id, kind, target, unit, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO goals (statement, why, level, period, parent_id, kind, target, stretch, unit, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		in.Statement, strings.TrimSpace(in.Why), string(level), period, in.ParentID,
-		string(kind), in.Target, strings.TrimSpace(in.Unit), now.Format(time.RFC3339))
+		string(kind), in.Target, in.Stretch, strings.TrimSpace(in.Unit), now.Format(time.RFC3339))
 	if err != nil {
 		return Goal{}, err
 	}
@@ -197,7 +234,7 @@ func (s *Store) Add(ctx context.Context, in NewGoal) (Goal, error) {
 }
 
 const selectGoal = `
-	SELECT g.id, g.statement, g.why, g.level, g.period, g.parent_id, g.kind, g.target, g.unit, g.outcome, g.created_at,
+	SELECT g.id, g.statement, g.why, g.level, g.period, g.parent_id, g.kind, g.target, g.stretch, g.unit, g.outcome, g.created_at,
 	       COALESCE((SELECT p.value FROM progress p WHERE p.goal_id = g.id ORDER BY p.recorded_at DESC, p.id DESC LIMIT 1), 0)
 	FROM goals g`
 
@@ -206,7 +243,7 @@ func scanGoal(row interface{ Scan(...any) error }) (Goal, error) {
 	var parent sql.NullInt64
 	var created string
 	err := row.Scan(&g.ID, &g.Statement, &g.Why, &g.Level, &g.Period, &parent, &g.Kind,
-		&g.Target, &g.Unit, &g.Outcome, &created, &g.Current)
+		&g.Target, &g.Stretch, &g.Unit, &g.Outcome, &created, &g.Current)
 	if err != nil {
 		return Goal{}, err
 	}
@@ -274,6 +311,7 @@ type Edit struct {
 	Why       *string
 	Period    *string
 	Target    *float64
+	Stretch   *float64 // 0 clears it
 	Unit      *string
 	ParentID  **int64 // outer nil = no change; inner nil = clear parent
 }
@@ -310,6 +348,15 @@ func (s *Store) Update(ctx context.Context, id int64, e Edit) (Goal, error) {
 		if g.Target > 0 {
 			g.Kind = Numeric
 		}
+		if g.Target == 0 {
+			g.Stretch = 0 // a yes/no goal has nothing to stretch
+		}
+	}
+	if e.Stretch != nil {
+		g.Stretch = *e.Stretch
+	}
+	if err := checkStretch(g.Target, g.Stretch); err != nil {
+		return Goal{}, err
 	}
 	if e.Unit != nil {
 		g.Unit = strings.TrimSpace(*e.Unit)
@@ -327,8 +374,8 @@ func (s *Store) Update(ctx context.Context, id int64, e Edit) (Goal, error) {
 		g.ParentID = *e.ParentID
 	}
 	_, err = s.db.ExecContext(ctx, `
-		UPDATE goals SET statement = ?, why = ?, level = ?, period = ?, kind = ?, target = ?, unit = ?, parent_id = ? WHERE id = ?`,
-		g.Statement, g.Why, string(g.Level), g.Period, string(g.Kind), g.Target, g.Unit, g.ParentID, id)
+		UPDATE goals SET statement = ?, why = ?, level = ?, period = ?, kind = ?, target = ?, stretch = ?, unit = ?, parent_id = ? WHERE id = ?`,
+		g.Statement, g.Why, string(g.Level), g.Period, string(g.Kind), g.Target, g.Stretch, g.Unit, g.ParentID, id)
 	if err != nil {
 		return Goal{}, err
 	}

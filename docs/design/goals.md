@@ -27,6 +27,12 @@ goals only.
 - Numeric goals have a running total the owner updates by hand, whenever.
   Every update is kept with its date, so the value over time can be looked
   back on.
+- A numeric goal can also have a stretch goal: "have the target number I'm
+  aiming for as-is but also have a stretch goal". The main target is what
+  everything reports against. Progress towards the stretch only shows on the
+  goal's own page, and only once the goal is at 100%: the existing bar carries
+  on past the target towards the stretch. Reaching 100% of the main target
+  still counts as done, and nothing happens when the stretch is hit.
 - Non-numeric yearly goals, such as "become a confident open-water swimmer",
   have no measure of their own. They are judged by whether their
   quarterly goals get hit, and by feel.

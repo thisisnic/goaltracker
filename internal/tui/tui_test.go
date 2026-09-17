@@ -288,7 +288,8 @@ func TestAddViaForm(t *testing.T) {
 	typeText(m, "because")
 	press(m, "enter") // why -> target
 	typeText(m, "12,000")
-	press(m, "enter") // target -> unit
+	press(m, "enter") // target -> stretch
+	press(m, "enter") // stretch -> unit
 	typeText(m, "£")
 	press(m, "enter") // unit -> under
 	press(m, "enter") // submit
@@ -344,7 +345,7 @@ func TestEditViaForm(t *testing.T) {
 		t.Fatalf("edit form not prefilled: %+v", m.form)
 	}
 	typeText(m, " in september")
-	press(m, "enter", "enter", "enter", "enter", "enter", "enter")
+	press(m, "enter", "enter", "enter", "enter", "enter", "enter", "enter")
 	if m.mode != modeBrowse || m.err != nil {
 		t.Fatalf("edit did not save: mode=%v err=%v", m.mode, m.err)
 	}
@@ -371,7 +372,7 @@ func TestEditKeepsExactTarget(t *testing.T) {
 		before, _ := store.Get(ctx, id)
 		press(m, "e")
 		typeText(m, "!")
-		press(m, "enter", "enter", "enter", "enter", "enter", "enter")
+		press(m, "enter", "enter", "enter", "enter", "enter", "enter", "enter")
 		if m.mode != modeBrowse || m.err != nil {
 			t.Fatalf("edit of #%d did not save: mode=%v err=%v", id, m.mode, m.err)
 		}
@@ -389,7 +390,7 @@ func TestEscClearsFilterBeforeClosingForm(t *testing.T) {
 	m, _ := setup(t)
 	press(m, "a")
 	typeText(m, "x")
-	press(m, "enter", "enter", "enter", "enter", "enter") // focus lands on Under
+	press(m, "enter", "enter", "enter", "enter", "enter", "enter") // focus lands on Under
 	if m.form.filtering() {
 		t.Fatal("filter open before / was pressed")
 	}
@@ -692,5 +693,65 @@ func TestYearSectionsAndDoneRows(t *testing.T) {
 	}
 	if got := m.viewRow(m.rows[1], false, 40); got != ansi.Strip(got) {
 		t.Errorf("open row styled: %q", got)
+	}
+}
+
+func TestStretchShowsOnlyAtTarget(t *testing.T) {
+	m, store := setup(t)
+	ctx := context.Background()
+	six := 90000.0
+	if _, err := store.Update(ctx, 1, goal.Edit{Stretch: &six}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RecordProgress(ctx, 1, 35000, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	if view := ansi.Strip(m.View().Content); strings.Contains(view, "stretch") {
+		t.Errorf("stretch shown before the target is reached:\n%s", view)
+	}
+	if _, err := store.RecordProgress(ctx, 1, 75000, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "progress £75,000 / £70,000") || !strings.Contains(view, "stretch  £90,000") {
+		t.Errorf("stretch missing at 100%%:\n%s", view)
+	}
+	// The bar runs to the stretch: some of it filled, some still empty.
+	raw := m.View().Content
+	if !strings.Contains(raw, stretchStyle.Render("█")[:5]) || !strings.Contains(ansi.Strip(raw), "█░") {
+		t.Errorf("bar does not carry on past the target:\n%s", view)
+	}
+	// Private mode hides the stretch amount too.
+	press(m, "x")
+	if view := ansi.Strip(m.View().Content); strings.Contains(view, "90,000") {
+		t.Errorf("private mode leaked the stretch:\n%s", view)
+	}
+}
+
+func TestFormSavesStretch(t *testing.T) {
+	m, store := setup(t)
+	press(m, "e")
+	f := m.form
+	f.stretch = "80000"
+	if _, err := f.apply(m); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := store.Get(context.Background(), 1)
+	if g.Stretch != 80000 {
+		t.Errorf("Stretch = %v want 80000", g.Stretch)
+	}
+	press(m, "esc")
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	press(m, "e")
+	if m.form.stretch != "80000" {
+		t.Errorf("edit form stretch = %q", m.form.stretch)
 	}
 }

@@ -2,10 +2,12 @@ package goal
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -317,4 +319,88 @@ func TestOpenLeavesUserDirectoryAlone(t *testing.T) {
 			t.Errorf("%s: database mode = %o want 600", name, m)
 		}
 	}
+}
+
+func TestStretch(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	// A stretch must sit beyond a numeric target.
+	for _, c := range []NewGoal{
+		{Statement: "x", Period: "2026", Target: 100, Stretch: 100},
+		{Statement: "x", Period: "2026", Target: 100, Stretch: 50},
+		{Statement: "x", Period: "2026", Stretch: 50},
+		{Statement: "x", Period: "2026", Target: 100, Stretch: -1},
+	} {
+		if _, err := s.Add(ctx, c); err == nil {
+			t.Errorf("Add(%+v) succeeded, want error", c)
+		}
+	}
+	g, err := s.Add(ctx, NewGoal{Statement: "run", Period: "2026", Target: 500, Stretch: 600, Unit: "km"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Stretch != 600 {
+		t.Fatalf("Stretch = %v want 600", g.Stretch)
+	}
+	if _, err := s.RecordProgress(ctx, g.ID, 550, ""); err != nil {
+		t.Fatal(err)
+	}
+	g, _ = s.Get(ctx, g.ID)
+	if g.Percent() != 100 || g.StretchPercent() < 91 || g.StretchPercent() > 92 {
+		t.Errorf("Percent = %v StretchPercent = %v", g.Percent(), g.StretchPercent())
+	}
+	// Lowering the target below the stretch is fine; below it is not.
+	bad := 700.0
+	if _, err := s.Update(ctx, g.ID, Edit{Target: &bad}); err == nil {
+		t.Error("target above stretch accepted")
+	}
+	zero := 0.0
+	g, err = s.Update(ctx, g.ID, Edit{Stretch: &zero})
+	if err != nil || g.Stretch != 0 {
+		t.Errorf("clearing stretch: %v, Stretch = %v", err, g.Stretch)
+	}
+	// Making the goal yes/no drops the stretch with the target.
+	six := 600.0
+	if _, err := s.Update(ctx, g.ID, Edit{Stretch: &six}); err != nil {
+		t.Fatal(err)
+	}
+	g, err = s.Update(ctx, g.ID, Edit{Target: &zero})
+	if err != nil || g.Kind != YesNo || g.Stretch != 0 {
+		t.Errorf("yes/no goal kept a stretch: %v, %+v", err, g)
+	}
+}
+
+func TestOpenAddsStretchToOldDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "goaltracker.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The v0.2.0 schema, without the stretch column.
+	old := strings.Replace(schema, "\tstretch    REAL NOT NULL DEFAULT 0,\n", "", 1)
+	if old == schema {
+		t.Fatal("could not strip the stretch column from the schema")
+	}
+	if _, err := db.Exec(old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO goals (statement, level, period, kind, target, created_at) VALUES ('old', 'year', '2026', 'numeric', 10, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g, err := s.Get(context.Background(), 1)
+	if err != nil || g.Stretch != 0 || g.Target != 10 {
+		t.Errorf("old goal after migrate: %v, %+v", err, g)
+	}
+	// Opening again is a no-op.
+	s.Close()
+	if s, err = Open(path); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
 }

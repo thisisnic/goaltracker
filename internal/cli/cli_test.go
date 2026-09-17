@@ -371,3 +371,32 @@ func TestUpdateMessages(t *testing.T) {
 		t.Errorf("update when current: %q", out)
 	}
 }
+
+func TestStretchFlags(t *testing.T) {
+	r := newRunner(t)
+	r.run("", false, "goal", "add", "run", "--period", "2026", "--target", "500", "--stretch", "600", "--unit", "km")
+	// Below the target, only the stretch figure is shown.
+	out := r.run("", false, "goal", "show", "1")
+	if !strings.Contains(out, "stretch:  600 km\n") {
+		t.Errorf("show before target:\n%s", out)
+	}
+	r.run("", false, "goal", "progress", "1", "550")
+	out = r.run("", false, "goal", "show", "1")
+	if !strings.Contains(out, "stretch:  550 km / 600 km (92%)") {
+		t.Errorf("show after target:\n%s", out)
+	}
+	var g goal.Goal
+	if err := json.Unmarshal([]byte(r.run("", false, "goal", "show", "1", "--json")), &g); err != nil {
+		t.Fatal(err)
+	}
+	if g.Stretch != 600 {
+		t.Errorf("json stretch = %v", g.Stretch)
+	}
+	if msg := r.run("", true, "goal", "edit", "1", "--stretch", "400"); !strings.Contains(msg, "beyond the target") {
+		t.Errorf("bad stretch error = %q", msg)
+	}
+	r.run("", false, "goal", "edit", "1", "--stretch", "0")
+	if out := r.run("", false, "goal", "show", "1"); strings.Contains(out, "stretch") {
+		t.Errorf("stretch not cleared:\n%s", out)
+	}
+}

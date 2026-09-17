@@ -72,6 +72,9 @@ goaltracker goal list --json
   a tree with progress at a glance.
 - **Numeric or yes/no** - A target with a unit, or a simple done or not.
   Units are placed sensibly: `£35,000`, `215 km`, `50%`.
+- **Stretch targets** - A numeric goal can carry a stretch figure beyond its
+  target. It stays out of the way until the target is reached, then the
+  goal's page shows it and the bar carries on towards it.
 - **Progress history** - Every running-total update is kept and dated.
 - **Private mode** - Hide the why, every amount and every note when someone
   might be reading over your shoulder. Press `x`, start with `--private`, or
@@ -156,10 +159,10 @@ goaltracker update            # install it
 | Command | What it does |
 | --- | --- |
 | `goaltracker` | Open the terminal UI; `--private` |
-| `goaltracker goal add STATEMENT --period P` | Add a goal; `--target`, `--unit`, `--why`, `--parent`, `--json` |
+| `goaltracker goal add STATEMENT --period P` | Add a goal; `--target`, `--stretch`, `--unit`, `--why`, `--parent`, `--json` |
 | `goaltracker goal list` | Show the goal tree; `--year`, `--level`, `--json` |
 | `goaltracker goal show ID` | One goal with its why and history; `--json` |
-| `goaltracker goal edit ID` | Change statement, why, target, unit or parent; `--no-parent` |
+| `goaltracker goal edit ID` | Change statement, why, target, stretch, unit or parent; `--no-parent` |
 | `goaltracker goal progress ID VALUE` | Record a new running total; `--note` |
 | `goaltracker goal mark ID hit\|missed\|clear` | Set the outcome at the end of a period |
 | `goaltracker goal delete ID` | Delete a goal and its history; `--yes` |

@@ -341,6 +341,7 @@ var (
 	missedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	labelStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	yearStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	stretchStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	errStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	paneStyle     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("8")).Padding(0, 1)
 )
@@ -484,7 +485,13 @@ func (m *model) viewDetail(w, h int) string {
 	switch g.Kind {
 	case goal.Numeric:
 		prog = append(prog, cut(fmt.Sprintf("%s %s / %s", labelStyle.Render("progress"), amount(g.Current), amount(g.Target))))
-		prog = append(prog, bar(g.Percent(), w))
+		// The stretch only comes into view once the target is reached;
+		// the bar then carries on past the target towards it.
+		if g.Stretch > 0 && g.Percent() >= 100 {
+			prog = append(prog, cut(labelStyle.Render("stretch ")+" "+amount(g.Stretch)), stretchBar(g, w))
+		} else {
+			prog = append(prog, bar(g.Percent(), w))
+		}
 	default:
 		prog = append(prog, labelStyle.Render("progress")+" yes/no")
 	}
@@ -617,6 +624,20 @@ func bar(pct float64, w int) string {
 	}
 	filled := int(pct / 100 * float64(w))
 	return hitStyle.Render(strings.Repeat("█", filled)) + dimStyle.Render(strings.Repeat("░", w-filled))
+}
+
+// stretchBar draws the whole way to the stretch target: the run up to the
+// main target in the hit colour, the part beyond it in the stretch colour.
+func stretchBar(g goal.Goal, w int) string {
+	if w < 10 {
+		return ""
+	}
+	target := int(g.Target / g.Stretch * float64(w))
+	filled := int(g.StretchPercent() / 100 * float64(w))
+	beyond := max(0, filled-target)
+	return hitStyle.Render(strings.Repeat("█", min(filled, target))) +
+		stretchStyle.Render(strings.Repeat("█", beyond)) +
+		dimStyle.Render(strings.Repeat("░", w-filled))
 }
 
 func (m *model) viewStatus() string {

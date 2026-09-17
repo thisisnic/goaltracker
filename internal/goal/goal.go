@@ -55,6 +55,7 @@ type Goal struct {
 	ParentID  *int64    `json:"parent_id,omitempty"`
 	Kind      Kind      `json:"kind"`
 	Target    float64   `json:"target,omitempty"`
+	Stretch   float64   `json:"stretch,omitempty"` // beyond Target; 0 means none
 	Unit      string    `json:"unit,omitempty"`
 	Current   float64   `json:"current,omitempty"`
 	Outcome   Outcome   `json:"outcome,omitempty"`
@@ -111,6 +112,29 @@ func ParseOutcome(s string) (Outcome, error) {
 		return Unmarked, nil
 	}
 	return "", fmt.Errorf("outcome %q: want hit, missed or clear", s)
+}
+
+// StretchPercent is how far a numeric goal is towards its stretch target,
+// capped at 100. It returns 0 when there is no stretch.
+func (g Goal) StretchPercent() float64 {
+	if g.Kind != Numeric || g.Stretch == 0 {
+		return 0
+	}
+	return min(100, g.Current/g.Stretch*100)
+}
+
+// checkStretch validates a stretch against a target: it must be zero or
+// beyond the target, and a yes/no goal cannot have one.
+func checkStretch(target, stretch float64) error {
+	switch {
+	case stretch < 0:
+		return errors.New("stretch must not be negative")
+	case stretch > 0 && target == 0:
+		return errors.New("stretch needs a numeric target")
+	case stretch > 0 && stretch <= target:
+		return errors.New("stretch must be beyond the target")
+	}
+	return nil
 }
 
 // Year is the calendar year the goal's period falls in.

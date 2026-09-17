@@ -82,6 +82,7 @@ otherwise it is a yes/no goal.`,
 	cmd.Flags().StringVar(&in.Why, "why", "", "why this goal matters")
 	cmd.Flags().Int64Var(&parent, "parent", 0, "id of the goal this one sits under")
 	cmd.Flags().Float64Var(&in.Target, "target", 0, "numeric target; omit for a yes/no goal")
+	cmd.Flags().Float64Var(&in.Stretch, "stretch", 0, "stretch target beyond --target")
 	cmd.Flags().StringVar(&in.Unit, "unit", "", "unit for the target, e.g. £ or kg")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the goal as JSON")
 	_ = cmd.MarkFlagRequired("period")
@@ -151,6 +152,18 @@ func progressText(g goal.Goal) string {
 	return fmt.Sprintf("%s / %s (%.0f%%)", g.Amount(g.Current), g.Amount(g.Target), g.Percent())
 }
 
+// stretchText describes the stretch target. Progress towards it is only
+// reported once the main target is reached.
+func stretchText(g goal.Goal) string {
+	switch {
+	case g.Kind != goal.Numeric || g.Stretch == 0:
+		return ""
+	case g.Percent() < 100:
+		return g.Amount(g.Stretch)
+	}
+	return fmt.Sprintf("%s / %s (%.0f%%)", g.Amount(g.Current), g.Amount(g.Stretch), g.StretchPercent())
+}
+
 type goalDetail struct {
 	goal.Goal
 	History []goal.Progress `json:"history"`
@@ -196,6 +209,9 @@ func goalShowCmd(dbPath *string) *cobra.Command {
 				fmt.Fprintf(out, "why:      %s\n", g.Why)
 			}
 			fmt.Fprintf(out, "progress: %s\n", progressText(g))
+			if st := stretchText(g); st != "" {
+				fmt.Fprintf(out, "stretch:  %s\n", st)
+			}
 			if g.Outcome != goal.Unmarked {
 				fmt.Fprintf(out, "outcome:  %s\n", g.Outcome)
 			}
@@ -218,12 +234,12 @@ func goalShowCmd(dbPath *string) *cobra.Command {
 
 func goalEditCmd(dbPath *string) *cobra.Command {
 	var statement, why, unit string
-	var target float64
+	var target, stretch float64
 	var parent int64
 	var clearParent bool
 	cmd := &cobra.Command{
 		Use:   "edit ID",
-		Short: "Change a goal's statement, why, target, unit or parent",
+		Short: "Change a goal's statement, why, target, stretch, unit or parent",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
@@ -239,6 +255,9 @@ func goalEditCmd(dbPath *string) *cobra.Command {
 			}
 			if cmd.Flags().Changed("target") {
 				e.Target = &target
+			}
+			if cmd.Flags().Changed("stretch") {
+				e.Stretch = &stretch
 			}
 			if cmd.Flags().Changed("unit") {
 				e.Unit = &unit
@@ -269,6 +288,7 @@ func goalEditCmd(dbPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&statement, "statement", "", "new statement")
 	cmd.Flags().StringVar(&why, "why", "", "new why")
 	cmd.Flags().Float64Var(&target, "target", 0, "new target; 0 makes the goal yes/no")
+	cmd.Flags().Float64Var(&stretch, "stretch", 0, "new stretch target; 0 removes it")
 	cmd.Flags().StringVar(&unit, "unit", "", "new unit, e.g. £ or kg")
 	cmd.Flags().Int64Var(&parent, "parent", 0, "new parent goal id")
 	cmd.Flags().BoolVar(&clearParent, "no-parent", false, "remove the parent link")

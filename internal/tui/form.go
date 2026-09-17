@@ -23,6 +23,7 @@ type goalForm struct {
 	period    string
 	why       string
 	target    string
+	stretch   string
 	unit      string
 	parent    int64 // 0 means none
 }
@@ -42,6 +43,9 @@ func newGoalForm(existing *goal.Goal, candidates []goal.Row, defaultPeriod strin
 			// Exact, not the display-rounded form, so saving an untouched
 			// edit does not change the stored target.
 			f.target = strconv.FormatFloat(existing.Target, 'f', -1, 64)
+		}
+		if existing.Stretch > 0 {
+			f.stretch = strconv.FormatFloat(existing.Stretch, 'f', -1, 64)
 		}
 		if existing.ParentID != nil {
 			f.parent = *existing.ParentID
@@ -76,6 +80,11 @@ func newGoalForm(existing *goal.Goal, candidates []goal.Row, defaultPeriod strin
 				}),
 			huh.NewInput().Title("Why").Value(&f.why),
 			huh.NewInput().Title("Target").Description("a number for a numeric goal, blank for yes/no").Value(&f.target).
+				Validate(func(s string) error {
+					_, err := parseTarget(s)
+					return err
+				}),
+			huh.NewInput().Title("Stretch").Description("a number beyond the target, blank for none").Value(&f.stretch).
 				Validate(func(s string) error {
 					_, err := parseTarget(s)
 					return err
@@ -140,6 +149,10 @@ func (f *goalForm) apply(m *model) (goal.Goal, error) {
 	if err != nil {
 		return goal.Goal{}, err
 	}
+	stretch, err := parseTarget(f.stretch)
+	if err != nil {
+		return goal.Goal{}, err
+	}
 	var parent *int64
 	if f.parent > 0 {
 		p := f.parent
@@ -148,12 +161,12 @@ func (f *goalForm) apply(m *model) (goal.Goal, error) {
 	if f.editID == 0 {
 		return m.store.Add(m.ctx, goal.NewGoal{
 			Statement: f.statement, Why: f.why, Period: f.period,
-			Target: target, Unit: f.unit, ParentID: parent,
+			Target: target, Stretch: stretch, Unit: f.unit, ParentID: parent,
 		})
 	}
 	return m.store.Update(m.ctx, f.editID, goal.Edit{
 		Statement: &f.statement, Why: &f.why, Period: &f.period,
-		Target: &target, Unit: &f.unit, ParentID: &parent,
+		Target: &target, Stretch: &stretch, Unit: &f.unit, ParentID: &parent,
 	})
 }
 
