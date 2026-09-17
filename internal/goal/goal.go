@@ -196,9 +196,10 @@ type Node struct {
 	Children []*Node
 }
 
-// Tree arranges goals into parent/child nodes, preserving input order at each
-// level. Goals that would be unreachable from any root, for instance because
-// their parent links form a loop, are appended as roots so nothing is hidden.
+// Tree arranges goals into parent/child nodes. Roots are sorted by period,
+// with ties kept in input order; children keep their input order. Goals that
+// would be unreachable from any root, for instance because their parent links
+// form a loop, become roots too so nothing is hidden.
 func Tree(goals []Goal) []*Node {
 	byID := make(map[int64]*Node, len(goals))
 	nodes := make([]*Node, 0, len(goals))
