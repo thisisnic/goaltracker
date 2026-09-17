@@ -155,7 +155,7 @@ goaltracker update            # install it
 
 | Command | What it does |
 | --- | --- |
-| `goaltracker` | Open the terminal UI |
+| `goaltracker` | Open the terminal UI; `--private` |
 | `goaltracker goal add STATEMENT --period P` | Add a goal; `--target`, `--unit`, `--why`, `--parent`, `--json` |
 | `goaltracker goal list` | Show the goal tree; `--year`, `--level`, `--json` |
 | `goaltracker goal show ID` | One goal with its why and history; `--json` |
@@ -168,6 +168,8 @@ goaltracker update            # install it
 | `goaltracker restore [FILE]` | Replace the database with a backup; `--identity`, `--yes` |
 | `goaltracker update` | Install the latest release; `--check`, `--force` |
 | `goaltracker version` | Print the version |
+
+Every command also takes `--db` and `--config` to point at a different database or config file.
 
 ## Development
 
