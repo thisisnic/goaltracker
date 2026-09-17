@@ -793,12 +793,21 @@ func TestStretchFieldValidatesAgainstTarget(t *testing.T) {
 	if err := m.form.form.GetFocusedField().Error(); err != nil {
 		t.Fatalf("valid stretch rejected: %v", err)
 	}
-	// Going back and raising the target past the stretch is caught on the
-	// target field.
+	// Raising the target past the stretch is not caught on the target
+	// field, so both can be raised in turn without getting stuck.
 	press(m, "shift+tab", "shift+tab") // unit -> stretch -> target
 	typeText(m, "0")                   // 1000
-	press(m, "enter")
-	if err := m.form.form.GetFocusedField().Error(); err == nil || !strings.Contains(err.Error(), "beyond the target") {
-		t.Errorf("target raised past the stretch accepted: %v", err)
+	press(m, "enter")                  // to stretch
+	if err := m.form.form.GetFocusedField().Error(); err != nil {
+		t.Fatalf("target field blocked: %v", err)
+	}
+	typeText(m, "0") // 1500
+	press(m, "enter", "enter", "enter", "enter")
+	if m.mode != modeBrowse || m.err != nil {
+		t.Fatalf("raising both did not save: mode=%v err=%v", m.mode, m.err)
+	}
+	g, _ := m.selected()
+	if g.Target != 1000 || g.Stretch != 1500 {
+		t.Errorf("saved target=%v stretch=%v", g.Target, g.Stretch)
 	}
 }
