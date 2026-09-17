@@ -411,3 +411,19 @@ func TestOpenAddsColumnsToOldDatabase(t *testing.T) {
 	}
 	s.Close()
 }
+
+func TestTrimBlankLines(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"", ""},
+		{"  \n\t\n", ""},
+		{"plain", "plain"},
+		{"\n  - indented\nsecond\n\n", "  - indented\nsecond"},
+		{" \t\n  - item", "  - item"},
+		{"a\r\n\r\n", "a"},
+		{"a\n\n  b  \n", "a\n\n  b"},
+	} {
+		if got := trimBlankLines(c.in); got != c.want {
+			t.Errorf("trimBlankLines(%q) = %q want %q", c.in, got, c.want)
+		}
+	}
+}

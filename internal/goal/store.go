@@ -369,9 +369,7 @@ func (s *Store) Update(ctx context.Context, id int64, e Edit) (Goal, error) {
 		g.Unit = strings.TrimSpace(*e.Unit)
 	}
 	if e.Notes != nil {
-		// Drop blank lines at either end but keep a leading indent, since
-		// notes are a free-text block where the first line may be indented.
-		g.Notes = strings.TrimLeft(strings.TrimRight(*e.Notes, " \t\r\n"), "\r\n")
+		g.Notes = trimBlankLines(*e.Notes)
 	}
 	if e.ParentID != nil {
 		if *e.ParentID != nil {
@@ -392,6 +390,19 @@ func (s *Store) Update(ctx context.Context, id int64, e Edit) (Goal, error) {
 		return Goal{}, err
 	}
 	return s.Get(ctx, id)
+}
+
+// trimBlankLines drops whole blank lines at either end of a text block but
+// keeps a leading indent, since a note's first line may be indented.
+func trimBlankLines(s string) string {
+	lines := strings.Split(s, "\n")
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.TrimRight(strings.Join(lines, "\n"), " \t\r")
 }
 
 // checkNoCycle walks up from newParent and fails if it reaches id, which
